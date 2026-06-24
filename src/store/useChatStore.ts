@@ -169,11 +169,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
     }
 
+    let loadedLanguage = getSetting('language');
+    if (!loadedLanguage) {
+      const browserLang = navigator.language || '';
+      if (browserLang.startsWith('ja')) {
+        loadedLanguage = 'ja';
+      } else if (browserLang.startsWith('zh')) {
+        loadedLanguage = 'zh';
+      } else {
+        loadedLanguage = 'en';
+      }
+      await db.settings.put({ key: 'language', value: loadedLanguage });
+    }
+
     set({
       providers: loadedProviders,
       globalSystemPrompt: getSetting('globalSystemPrompt'),
       theme,
-      language: getSetting('language'),
+      language: loadedLanguage,
       activeModelId,
       sidebarOpen: sidebarOpenVal === 'true' || sidebarOpenVal === true,
     });

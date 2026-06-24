@@ -109,9 +109,9 @@ export const Sidebar: React.FC = () => {
       <div className="flex items-center justify-between p-4 border-b border-border-light dark:border-border-dark">
         <div className="flex items-center space-x-2">
           <div className="w-8 h-8 rounded-lg bg-accent-blue flex items-center justify-center text-white font-bold text-lg shadow-sm">
-            M
+            H
           </div>
-          <span className="font-bold text-gray-900 dark:text-gray-100 text-md tracking-wider">Minase AI</span>
+          <span className="font-bold text-gray-900 dark:text-gray-100 text-md tracking-wider">Himawari</span>
         </div>
         <div className="flex items-center space-x-1">
           <button

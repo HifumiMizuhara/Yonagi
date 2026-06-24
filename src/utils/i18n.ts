@@ -46,7 +46,7 @@ export const translations = {
     // ChatArea
     howCanIHelp: 'どのようなお手伝いをしましょうか？',
     howCanIHelpSub: 'モデルを選択し、質問の入力やファイルを添付して会話を始めましょう。',
-    disclaimer: 'AI answers can be incorrect. Verify important info. Project Minase.',
+    disclaimer: 'AI answers can be incorrect. Verify important info. Project Himawari.',
     inputTextPlaceholder: 'メッセージを入力... (Shift+Enterで改行)',
     send: '送信',
     generating: '回答生成中...',
@@ -125,7 +125,7 @@ export const translations = {
     // ChatArea
     howCanIHelp: 'How can I help you today?',
     howCanIHelpSub: 'Select a model, enter your query, or attach a file to start chatting.',
-    disclaimer: 'AI answers can be incorrect. Verify important info. Project Minase.',
+    disclaimer: 'AI answers can be incorrect. Verify important info. Project Himawari.',
     inputTextPlaceholder: 'Send a message... (Shift+Enter for newline)',
     send: 'Send',
     generating: 'Generating response...',
@@ -204,7 +204,7 @@ export const translations = {
     // ChatArea
     howCanIHelp: '今天能为您做些什么？',
     howCanIHelpSub: '选择模型、输入问题或附加文件以开始对话。',
-    disclaimer: 'AI answers can be incorrect. Verify important info. Project Minase.',
+    disclaimer: 'AI answers can be incorrect. Verify important info. Project Himawari.',
     inputTextPlaceholder: '输入消息... (Shift+Enter 换行)',
     send: '发送',
     generating: '正在生成回答...',
