@@ -163,7 +163,7 @@ const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
 const DEFAULT_SETTINGS: Record<string, any> = {
   providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
-  theme: 'dark',
+  theme: 'system',
   language: 'ja',
   activeModelId: 'gemini-1.5-flash',
   activeEffort: 'none',
@@ -173,6 +173,8 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   modelPricing: {},
   keyEncryptionEnabled: false,
 };
+
+let removeSystemThemeListener: (() => void) | null = null;
 
 export const useChatStore = create<ChatState>((set, get) => ({
   chats: [],
@@ -184,7 +186,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
-  theme: 'dark',
+  theme: 'system',
   language: 'ja',
   promptPresets: [],
   modelPricing: {},
@@ -477,13 +479,24 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setTheme: (theme) => {
     const root = window.document.documentElement;
+    removeSystemThemeListener?.();
+    removeSystemThemeListener = null;
+
+    const applyResolvedTheme = (resolvedTheme: 'light' | 'dark') => {
+      root.classList.remove('light', 'dark');
+      root.classList.add(resolvedTheme);
+    };
+
     root.classList.remove('light', 'dark');
 
     if (theme === 'system') {
-      const systemTheme = window.matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-      root.classList.add(systemTheme);
+      const mediaQuery = window.matchMedia('(prefers-color-scheme: dark)');
+      const applySystemTheme = () => applyResolvedTheme(mediaQuery.matches ? 'dark' : 'light');
+      applySystemTheme();
+      mediaQuery.addEventListener('change', applySystemTheme);
+      removeSystemThemeListener = () => mediaQuery.removeEventListener('change', applySystemTheme);
     } else {
-      root.classList.add(theme);
+      applyResolvedTheme(theme);
     }
   },
 
