@@ -1,4 +1,5 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useLayoutEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { useChatStore } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
 import { db, type Attachment, type Citation, type TokenUsage, type ModelPrice } from '../services/db';
@@ -10,6 +11,92 @@ import {
   Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Code, Pencil, AlignLeft, Compass,
   ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe
 } from 'lucide-react';
+
+interface HeaderDropdownPortalProps {
+  anchorRef: React.RefObject<HTMLDivElement | null>;
+  panelRef: React.RefObject<HTMLDivElement | null>;
+  open: boolean;
+  desktopWidth: number;
+  className?: string;
+  children: React.ReactNode;
+}
+
+const HeaderDropdownPortal: React.FC<HeaderDropdownPortalProps> = ({
+  anchorRef,
+  panelRef,
+  open,
+  desktopWidth,
+  className = '',
+  children,
+}) => {
+  const [style, setStyle] = useState<React.CSSProperties | null>(null);
+
+  useLayoutEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const updatePosition = () => {
+      const anchor = anchorRef.current;
+      if (!anchor) return;
+
+      const rect = anchor.getBoundingClientRect();
+      const viewport = window.visualViewport;
+      const viewportWidth = viewport?.width ?? window.innerWidth;
+      const viewportHeight = viewport?.height ?? window.innerHeight;
+      const margin = 12;
+      const top = rect.bottom + 8;
+
+      if (window.innerWidth < 768) {
+        setStyle({
+          position: 'fixed',
+          top,
+          left: margin,
+          right: margin,
+          maxHeight: Math.max(160, viewportHeight - top - margin),
+          zIndex: 70,
+        });
+        return;
+      }
+
+      const width = Math.min(desktopWidth, viewportWidth - margin * 2);
+      setStyle({
+        position: 'fixed',
+        top,
+        left: Math.max(margin, Math.min(rect.left, viewportWidth - width - margin)),
+        width,
+        maxHeight: Math.max(160, viewportHeight - top - margin),
+        zIndex: 70,
+      });
+    };
+
+    updatePosition();
+    window.addEventListener('resize', updatePosition);
+    window.addEventListener('scroll', updatePosition, true);
+    window.visualViewport?.addEventListener('resize', updatePosition);
+    window.visualViewport?.addEventListener('scroll', updatePosition);
+
+    return () => {
+      window.removeEventListener('resize', updatePosition);
+      window.removeEventListener('scroll', updatePosition, true);
+      window.visualViewport?.removeEventListener('resize', updatePosition);
+      window.visualViewport?.removeEventListener('scroll', updatePosition);
+    };
+  }, [anchorRef, desktopWidth, open]);
+
+  if (!open || !style) return null;
+
+  return createPortal(
+    <div
+      ref={panelRef}
+      style={style}
+      className={`overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark shadow-2xl animate-scale-up ${className}`}
+    >
+      {children}
+    </div>,
+    document.body
+  );
+};
 
 export const ChatArea: React.FC = () => {
   const store = useChatStore();
@@ -39,6 +126,9 @@ export const ChatArea: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const effortDropdownRef = useRef<HTMLDivElement>(null);
   const promptDropdownRef = useRef<HTMLDivElement>(null);
+  const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
+  const effortDropdownPanelRef = useRef<HTMLDivElement>(null);
+  const promptDropdownPanelRef = useRef<HTMLDivElement>(null);
   const dropdownCompareRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -54,16 +144,29 @@ export const ChatArea: React.FC = () => {
   // Handle outside click for model and effort dropdowns
   useEffect(() => {
     const handleOutsideClick = (e: MouseEvent) => {
-      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node)) {
+      const target = e.target as Node;
+      if (
+        dropdownRef.current &&
+        !dropdownRef.current.contains(target) &&
+        !modelDropdownPanelRef.current?.contains(target)
+      ) {
         setShowModelDropdown(false);
       }
-      if (effortDropdownRef.current && !effortDropdownRef.current.contains(e.target as Node)) {
+      if (
+        effortDropdownRef.current &&
+        !effortDropdownRef.current.contains(target) &&
+        !effortDropdownPanelRef.current?.contains(target)
+      ) {
         setShowEffortDropdown(false);
       }
-      if (promptDropdownRef.current && !promptDropdownRef.current.contains(e.target as Node)) {
+      if (
+        promptDropdownRef.current &&
+        !promptDropdownRef.current.contains(target) &&
+        !promptDropdownPanelRef.current?.contains(target)
+      ) {
         setShowPromptDropdown(false);
       }
-      if (dropdownCompareRef.current && !dropdownCompareRef.current.contains(e.target as Node)) {
+      if (dropdownCompareRef.current && !dropdownCompareRef.current.contains(target)) {
         setCompareDropdownOpen(null);
       }
     };
@@ -113,9 +216,6 @@ export const ChatArea: React.FC = () => {
     name: store.activeModelId,
     group: 'Unknown',
   };
-
-  const headerDropdownPanelClass =
-    'fixed left-3 right-3 top-[3.75rem] z-[70] w-auto max-h-[calc(100dvh-4.5rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl animate-scale-up md:absolute md:left-0 md:right-auto md:top-auto md:mt-2 md:z-50';
 
   const compareDropdownPanelClass =
     'fixed left-3 right-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-[70] w-auto max-h-[calc(100dvh-8rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-xl shadow-2xl animate-scale-up md:absolute md:left-0 md:right-auto md:bottom-full md:mb-1.5 md:w-60 md:max-h-[220px] md:z-50';
@@ -354,8 +454,13 @@ export const ChatArea: React.FC = () => {
               <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
             </button>
 
-            {showModelDropdown && (
-              <div className={`${headerDropdownPanelClass} p-2 md:w-[min(19rem,calc(100vw-1.5rem))] md:max-h-[60vh]`}>
+            <HeaderDropdownPortal
+              anchorRef={dropdownRef}
+              panelRef={modelDropdownPanelRef}
+              open={showModelDropdown}
+              desktopWidth={304}
+              className="rounded-2xl p-2"
+            >
                 
                 {/* Search bar inside model selector dropdown */}
                 <div className="p-1.5 border-b border-border-light/50 dark:border-border-dark/50 relative mb-1 shrink-0">
@@ -400,8 +505,7 @@ export const ChatArea: React.FC = () => {
                     </div>
                   );
                 })}
-              </div>
-            )}
+            </HeaderDropdownPortal>
           </div>
 
           {/* Effort Selector */}
@@ -421,8 +525,13 @@ export const ChatArea: React.FC = () => {
               <ChevronDown className="w-4 h-4 text-gray-400 shrink-0" />
             </button>
             
-            {showEffortDropdown && (
-              <div className={`${headerDropdownPanelClass} p-1.5 md:w-52 md:max-h-[320px]`}>
+            <HeaderDropdownPortal
+              anchorRef={effortDropdownRef}
+              panelRef={effortDropdownPanelRef}
+              open={showEffortDropdown}
+              desktopWidth={208}
+              className="rounded-2xl p-1.5"
+            >
                 {getEffortOptions().map((opt) =>
                   opt.value === 'custom_input' ? (
                     customEffortVisible ? (
@@ -478,8 +587,7 @@ export const ChatArea: React.FC = () => {
                     </button>
                   )
                 )}
-              </div>
-            )}
+            </HeaderDropdownPortal>
           </div>
 
           {/* Web Search Toggle */}
@@ -511,8 +619,13 @@ export const ChatArea: React.FC = () => {
                 <ChevronDown className="w-4 h-4 text-gray-400" />
               </button>
 
-              {showPromptDropdown && (
-                <div className={`${headerDropdownPanelClass} p-1.5 md:w-64 md:max-h-[320px]`}>
+              <HeaderDropdownPortal
+                anchorRef={promptDropdownRef}
+                panelRef={promptDropdownPanelRef}
+                open={showPromptDropdown}
+                desktopWidth={256}
+                className="rounded-2xl p-1.5"
+              >
                   {store.promptPresets.map((p) => (
                     <button
                       key={p.id}
@@ -524,8 +637,7 @@ export const ChatArea: React.FC = () => {
                       <span className="block text-[10px] text-gray-400 dark:text-gray-500 truncate">{p.content}</span>
                     </button>
                   ))}
-                </div>
-              )}
+              </HeaderDropdownPortal>
             </div>
           )}
         </div>
