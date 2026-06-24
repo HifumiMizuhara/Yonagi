@@ -114,6 +114,12 @@ export const ChatArea: React.FC = () => {
     group: 'Unknown',
   };
 
+  const headerDropdownPanelClass =
+    'fixed left-3 right-3 top-[6.25rem] z-[70] w-auto max-h-[calc(100dvh-7rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl animate-scale-up sm:absolute sm:left-0 sm:right-auto sm:top-auto sm:mt-2 sm:z-50';
+
+  const compareDropdownPanelClass =
+    'fixed left-3 right-3 bottom-[calc(env(safe-area-inset-bottom)+5rem)] z-[70] w-auto max-h-[calc(100dvh-8rem)] overflow-y-auto bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-xl shadow-2xl animate-scale-up sm:absolute sm:left-0 sm:right-auto sm:bottom-full sm:mb-1.5 sm:w-60 sm:max-h-[220px] sm:z-50';
+
   // Merge default prices with user overrides (user wins)
   const pricing: Record<string, ModelPrice> = { ...DEFAULT_MODEL_PRICING, ...store.modelPricing };
 
@@ -349,7 +355,7 @@ export const ChatArea: React.FC = () => {
             </button>
 
             {showModelDropdown && (
-              <div className="absolute left-0 mt-2 w-[min(19rem,calc(100vw-1.5rem))] bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl z-50 p-2 max-h-[60vh] overflow-y-auto animate-scale-up">
+              <div className={`${headerDropdownPanelClass} p-2 sm:w-[min(19rem,calc(100vw-1.5rem))] sm:max-h-[60vh]`}>
                 
                 {/* Search bar inside model selector dropdown */}
                 <div className="p-1.5 border-b border-border-light/50 dark:border-border-dark/50 relative mb-1 shrink-0">
@@ -416,7 +422,7 @@ export const ChatArea: React.FC = () => {
             </button>
             
             {showEffortDropdown && (
-              <div className="absolute left-0 mt-2 w-52 bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl z-50 p-1.5 animate-scale-up max-h-[320px] overflow-y-auto">
+              <div className={`${headerDropdownPanelClass} p-1.5 sm:w-52 sm:max-h-[320px]`}>
                 {getEffortOptions().map((opt) =>
                   opt.value === 'custom_input' ? (
                     customEffortVisible ? (
@@ -506,7 +512,7 @@ export const ChatArea: React.FC = () => {
               </button>
 
               {showPromptDropdown && (
-                <div className="absolute left-0 mt-2 w-64 bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl z-50 p-1.5 max-h-[320px] overflow-y-auto animate-scale-up">
+                <div className={`${headerDropdownPanelClass} p-1.5 sm:w-64 sm:max-h-[320px]`}>
                   {store.promptPresets.map((p) => (
                     <button
                       key={p.id}
@@ -855,7 +861,7 @@ export const ChatArea: React.FC = () => {
                           {compareDropdownOpen === msg.id && (
                             <div
                               ref={dropdownCompareRef}
-                              className="absolute left-0 bottom-full mb-1.5 w-60 bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-xl shadow-2xl z-50 p-1.5 max-h-[220px] overflow-y-auto animate-scale-up"
+                              className={`${compareDropdownPanelClass} p-1.5`}
                             >
                               <div className="px-2.5 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-wider border-b border-border-light/40 dark:border-border-dark/40 mb-1 select-none">
                                 {t.compareModelSelect}
