@@ -124,7 +124,6 @@ export const ChatArea: React.FC = () => {
   const [customEffortValue, setCustomEffortValue] = useState('');
 
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const effortDropdownRef = useRef<HTMLDivElement>(null);
   const promptDropdownRef = useRef<HTMLDivElement>(null);
@@ -133,14 +132,17 @@ export const ChatArea: React.FC = () => {
   const promptDropdownPanelRef = useRef<HTMLDivElement>(null);
   const dropdownCompareRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const messagesContainerRef = useRef<HTMLDivElement>(null);
 
-  // Auto scroll to bottom
-  const scrollToBottom = () => {
-    messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
-  };
-
+  // Scroll the messages list (not scrollIntoView): on mobile Chrome / iOS,
+  // scrollIntoView panned the visual viewport and collapsed the address bar,
+  // which pushed the header out of view — and root overflow:hidden blocked
+  // scrolling back. Direct scrollTop stays contained to the list element.
   useEffect(() => {
-    scrollToBottom();
+    if (store.messages.length === 0) return;
+    const container = messagesContainerRef.current;
+    if (!container) return;
+    container.scrollTop = container.scrollHeight;
   }, [store.messages]);
 
   // Handle outside click for model and effort dropdowns
@@ -677,7 +679,7 @@ export const ChatArea: React.FC = () => {
       </div>
 
       {/* Main Message History Area */}
-      <div className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
+      <div ref={messagesContainerRef} className="flex-1 overflow-y-auto px-4 py-6 md:px-8 space-y-6">
         
         {store.messages.length === 0 ? (
           /* Empty state */
@@ -1147,7 +1149,6 @@ export const ChatArea: React.FC = () => {
             })}
           </div>
         )}
-        <div ref={messagesEndRef} />
       </div>
 
       {/* Input container at the bottom */}
