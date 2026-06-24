@@ -9,6 +9,7 @@ export interface Chat {
   createdAt: number;
   updatedAt: number;
   effort?: string;
+  webSearch?: boolean;
 }
 
 export interface Attachment {
@@ -18,12 +19,25 @@ export interface Attachment {
   size: number;
 }
 
+export interface Citation {
+  url: string;
+  title?: string;
+}
+
+export interface TokenUsage {
+  inputTokens: number;
+  outputTokens: number;
+  estimated?: boolean; // true when derived locally (no API usage returned)
+}
+
 export interface MessageVariant {
   id: string;
   content: string;
   thinking?: string;
   modelUsed?: string;
   timestamp: number;
+  citations?: Citation[];
+  usage?: TokenUsage;
 }
 
 export interface Message {
@@ -37,6 +51,19 @@ export interface Message {
   variants?: MessageVariant[];
   activeVariantIndex?: number;
   thinking?: string;
+  citations?: Citation[];
+  usage?: TokenUsage;
+}
+
+export interface PromptPreset {
+  id: string;
+  name: string;
+  content: string;
+}
+
+export interface ModelPrice {
+  input: number;  // USD per 1M input tokens
+  output: number; // USD per 1M output tokens
 }
 
 export interface Setting {

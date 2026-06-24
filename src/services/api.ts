@@ -25,6 +25,7 @@ export interface StreamParams {
   systemPrompt: string;
   temperature: number;
   effort?: string;
+  webSearch?: boolean;
 }
 
 /**
@@ -128,7 +129,9 @@ export async function streamChatCompletion(
   // Fix #4: callbacks may be async (DB writes inside); declare return type accordingly
   onChunk: (text: string) => void | Promise<void>,
   onThinkingChunk: (text: string) => void | Promise<void>,
-  signal: AbortSignal
+  signal: AbortSignal,
+  onCitations?: (citations: Array<{ url: string; title?: string }>) => void | Promise<void>,
+  onUsage?: (usage: { inputTokens: number; outputTokens: number }) => void | Promise<void>
 ): Promise<string> {
   const { providerConfig, modelId } = params;
 
@@ -176,6 +179,11 @@ export async function streamChatCompletion(
         thinkingConfig: Object.keys(thinkingConfig).length > 0 ? thinkingConfig : undefined,
       },
     };
+
+    // Built-in web search (Google Search grounding)
+    if (params.webSearch) {
+      body.tools = [{ google_search: {} }];
+    }
   }
   else if (providerConfig.id === 'claude') {
     if (!providerConfig.apiKey) {
@@ -207,6 +215,11 @@ export async function streamChatCompletion(
       body.temperature = 1.0;
     } else {
       body.temperature = params.temperature;
+    }
+
+    // Built-in web search tool
+    if (params.webSearch) {
+      body.tools = [{ type: 'web_search_20250305', name: 'web_search' }];
     }
   }
   else if (providerConfig.id === 'ollama') {
@@ -251,6 +264,8 @@ export async function streamChatCompletion(
       messages: formattedMessages,
       temperature: params.temperature,
       stream: true,
+      // Request usage stats in the stream (final chunk carries `usage`)
+      stream_options: { include_usage: true },
     };
 
     if (params.effort && params.effort !== 'none') {
@@ -259,6 +274,17 @@ export async function streamChatCompletion(
       body.reasoning = {
         effort: effVal
       };
+    }
+
+    // Built-in web search. OpenAI uses `web_search_options`; OpenRouter-style
+    // gateways accept a `web` plugin. Send both so compatible endpoints pick up
+    // whichever they support.
+    if (params.webSearch) {
+      if (providerConfig.id === 'openai') {
+        body.web_search_options = {};
+      } else {
+        body.plugins = [{ id: 'web' }];
+      }
     }
   }
 
@@ -287,6 +313,10 @@ export async function streamChatCompletion(
   const decoder = new TextDecoder();
   let buffer = '';
   let fullResponseText = '';
+  // Claude reports input tokens once (message_start) and output tokens
+  // cumulatively (message_delta); keep them so we can emit the combined usage.
+  let claudeInput = 0;
+  let claudeOutput = 0;
 
   try {
     while (true) {
@@ -313,6 +343,25 @@ export async function streamChatCompletion(
 
           try {
             const parsed = JSON.parse(cleanLine);
+
+            // Token usage (Gemini reports cumulative counts per chunk)
+            if (onUsage && parsed.usageMetadata) {
+              await onUsage({
+                inputTokens: parsed.usageMetadata.promptTokenCount || 0,
+                outputTokens: parsed.usageMetadata.candidatesTokenCount || 0,
+              });
+            }
+
+            // Web search grounding sources
+            const groundingChunks = parsed.candidates?.[0]?.groundingMetadata?.groundingChunks;
+            if (onCitations && Array.isArray(groundingChunks)) {
+              const cites: Array<{ url: string; title?: string }> = [];
+              for (const c of groundingChunks) {
+                if (c.web?.uri) cites.push({ url: c.web.uri, title: c.web.title });
+              }
+              if (cites.length > 0) await onCitations(cites);
+            }
+
             const parts = parsed.candidates?.[0]?.content?.parts;
             if (parts && Array.isArray(parts)) {
               // Fix #4: use for...of (not forEach) so we can await the callbacks
@@ -343,6 +392,13 @@ export async function streamChatCompletion(
               await onChunk(textChunk);
               fullResponseText += textChunk;
             }
+            // Ollama reports counts on the final done message
+            if (onUsage && parsed.done && (parsed.prompt_eval_count || parsed.eval_count)) {
+              await onUsage({
+                inputTokens: parsed.prompt_eval_count || 0,
+                outputTokens: parsed.eval_count || 0,
+              });
+            }
           } catch (_) {}
         }
         else if (providerConfig.id === 'claude') {
@@ -351,6 +407,14 @@ export async function streamChatCompletion(
             if (dataStr === '[DONE]') continue;
             try {
               const parsed = JSON.parse(dataStr);
+              if (parsed.type === 'message_start' && parsed.message?.usage) {
+                claudeInput = parsed.message.usage.input_tokens || 0;
+                claudeOutput = parsed.message.usage.output_tokens || 0;
+                if (onUsage) await onUsage({ inputTokens: claudeInput, outputTokens: claudeOutput });
+              } else if (parsed.type === 'message_delta' && parsed.usage) {
+                claudeOutput = parsed.usage.output_tokens || claudeOutput;
+                if (onUsage) await onUsage({ inputTokens: claudeInput, outputTokens: claudeOutput });
+              }
               if (parsed.type === 'content_block_delta') {
                 if (parsed.delta?.text) {
                   const textChunk = parsed.delta.text;
@@ -358,6 +422,18 @@ export async function streamChatCompletion(
                   fullResponseText += textChunk;
                 } else if (parsed.delta?.thinking) {
                   await onThinkingChunk(parsed.delta.thinking);
+                } else if (parsed.delta?.type === 'citations_delta' && parsed.delta.citation) {
+                  const c = parsed.delta.citation;
+                  if (onCitations && c.url) await onCitations([{ url: c.url, title: c.title }]);
+                }
+              } else if (parsed.type === 'content_block_start' &&
+                         parsed.content_block?.type === 'web_search_tool_result') {
+                const results = parsed.content_block.content;
+                if (onCitations && Array.isArray(results)) {
+                  const cites = results
+                    .filter((r: any) => r.type === 'web_search_result' && r.url)
+                    .map((r: any) => ({ url: r.url, title: r.title }));
+                  if (cites.length > 0) await onCitations(cites);
                 }
               }
             } catch (_) {}
@@ -370,8 +446,22 @@ export async function streamChatCompletion(
             if (dataStr === '[DONE]') continue;
             try {
               const parsed = JSON.parse(dataStr);
+              // Usage arrives on the final chunk (choices may be empty there)
+              if (onUsage && parsed.usage) {
+                await onUsage({
+                  inputTokens: parsed.usage.prompt_tokens || 0,
+                  outputTokens: parsed.usage.completion_tokens || 0,
+                });
+              }
               const delta = parsed.choices?.[0]?.delta;
               if (delta) {
+                // Web search citations (OpenAI / OpenRouter url_citation annotations)
+                if (onCitations && Array.isArray(delta.annotations)) {
+                  const cites = delta.annotations
+                    .filter((a: any) => a.type === 'url_citation' && a.url_citation?.url)
+                    .map((a: any) => ({ url: a.url_citation.url, title: a.url_citation.title }));
+                  if (cites.length > 0) await onCitations(cites);
+                }
                 if (delta.content) {
                   await onChunk(delta.content);
                   fullResponseText += delta.content;

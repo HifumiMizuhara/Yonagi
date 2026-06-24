@@ -3,7 +3,7 @@ import { useChatStore } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
 import { type Chat } from '../services/db';
 import { 
-  MessageSquare, Plus, Settings, Trash2, Edit2, Check, X, PanelLeftClose, PanelLeft, MessageCircle
+  MessageSquare, Plus, Settings, Trash2, Edit2, Check, X, PanelLeftClose, PanelLeft, MessageCircle, Search
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -117,6 +117,13 @@ export const Sidebar: React.FC = () => {
           <span className="font-bold text-gray-950 dark:text-gray-50 text-md tracking-wider font-heading">Himawari</span>
         </div>
         <div className="flex items-center space-x-1">
+          <button
+            onClick={() => store.setSearchOpen(true)}
+            className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"
+            title={t.search}
+          >
+            <Search className="w-4 h-4" />
+          </button>
           <button
             onClick={() => store.createChat()}
             className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"

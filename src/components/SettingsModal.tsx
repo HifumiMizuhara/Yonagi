@@ -2,10 +2,11 @@ import React, { useState } from 'react';
 import { useChatStore } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
 import { db } from '../services/db';
-import { 
-  X, Shield, Settings, Database, Eye, EyeOff, Check, AlertCircle, Search, 
-  Trash2, Plus, RefreshCw, Globe, Key, HelpCircle
+import {
+  X, Shield, Settings, Database, Eye, EyeOff, Check, AlertCircle, Search,
+  Trash2, Plus, RefreshCw, Globe, Key, HelpCircle, DollarSign, Lock, Save, FileText
 } from 'lucide-react';
+import type { ModelPrice } from '../services/db';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -32,7 +33,50 @@ const PROVIDER_KEY_LINKS: Record<string, string> = {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const store = useChatStore();
   const { t, language } = useTranslation();
-  const [activeTab, setActiveTab] = useState<'connections' | 'prompt' | 'data'>('connections');
+  const [activeTab, setActiveTab] = useState<'connections' | 'prompt' | 'pricing' | 'security' | 'data'>('connections');
+
+  // Prompt preset form state
+  const [newPresetName, setNewPresetName] = useState('');
+  const [newPresetContent, setNewPresetContent] = useState('');
+
+  // Pricing form state
+  const [newPriceModel, setNewPriceModel] = useState('');
+  const [newPriceIn, setNewPriceIn] = useState('');
+  const [newPriceOut, setNewPriceOut] = useState('');
+
+  // Encryption form state
+  const [encPass, setEncPass] = useState('');
+  const [encPass2, setEncPass2] = useState('');
+  const [encError, setEncError] = useState<string | null>(null);
+
+  const handleSavePreset = async () => {
+    if (!newPresetName.trim() || !newPresetContent.trim()) return;
+    await store.addPromptPreset(newPresetName.trim(), newPresetContent.trim());
+    setNewPresetName('');
+    setNewPresetContent('');
+  };
+
+  const handleAddPrice = async () => {
+    const inp = parseFloat(newPriceIn);
+    const out = parseFloat(newPriceOut);
+    if (!newPriceModel.trim() || isNaN(inp) || isNaN(out)) return;
+    await store.setModelPrice(newPriceModel.trim(), { input: inp, output: out });
+    setNewPriceModel('');
+    setNewPriceIn('');
+    setNewPriceOut('');
+  };
+
+  const handleEnableEncryption = async () => {
+    setEncError(null);
+    if (!encPass) return;
+    if (encPass !== encPass2) {
+      setEncError(t.passphraseMismatch);
+      return;
+    }
+    await store.enableKeyEncryption(encPass);
+    setEncPass('');
+    setEncPass2('');
+  };
   
   // Left Sidebar State
   const [selectedProviderId, setSelectedProviderId] = useState<string>('gemini');
@@ -267,6 +311,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             >
               <Shield className="w-4 h-4 shrink-0" />
               <span className="hidden md:inline">{t.systemPrompt}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('pricing')}
+              className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
+                activeTab === 'pricing'
+                  ? 'border-amber-600 dark:border-amber-500 bg-card-light/60 dark:bg-card-dark/60 text-amber-600 dark:text-amber-400 font-bold'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-850 dark:hover:text-gray-200'
+              }`}
+            >
+              <DollarSign className="w-4 h-4 shrink-0" />
+              <span className="hidden md:inline">{t.pricing}</span>
+            </button>
+            <button
+              onClick={() => setActiveTab('security')}
+              className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
+                activeTab === 'security'
+                  ? 'border-amber-600 dark:border-amber-500 bg-card-light/60 dark:bg-card-dark/60 text-amber-600 dark:text-amber-400 font-bold'
+                  : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-850 dark:hover:text-gray-200'
+              }`}
+            >
+              <Lock className="w-4 h-4 shrink-0" />
+              <span className="hidden md:inline">{t.security}</span>
             </button>
             <button
               onClick={() => setActiveTab('data')}
@@ -664,19 +730,211 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
 
             {activeTab === 'prompt' && (
-              <div className="flex-1 p-6 space-y-4">
+              <div className="flex-1 p-6 space-y-5 overflow-y-auto">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest select-none font-heading">{t.systemPrompt}</h3>
                 <div className="space-y-3">
                   <p className="text-xs text-gray-500 dark:text-gray-450 leading-relaxed select-none">
                     {t.globalSystemPromptText}
                   </p>
                   <textarea
-                    rows={13}
+                    rows={7}
                     value={store.globalSystemPrompt}
                     onChange={(e) => store.updateSetting('globalSystemPrompt', e.target.value)}
                     placeholder="例: あなたは親切なプログラミングアシスタントです。常に日本語で簡潔に回答し、コード例を提示してください。"
                     className="w-full px-4 py-3.5 text-sm bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-2xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 dark:text-gray-100 font-sans resize-none shadow-inner"
                   />
+                  <button
+                    onClick={() => {
+                      setNewPresetContent(store.globalSystemPrompt);
+                      setNewPresetName('');
+                    }}
+                    className="flex items-center space-x-1.5 px-3 py-1.5 text-[11px] font-bold border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark text-gray-600 dark:text-gray-300 rounded-lg hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+                  >
+                    <Save className="w-3.5 h-3.5" />
+                    <span>{t.saveCurrentAsPreset}</span>
+                  </button>
+                </div>
+
+                {/* Preset library */}
+                <div className="space-y-3 border-t border-border-light dark:border-border-dark pt-5">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest select-none font-heading">{t.promptPresets}</h3>
+
+                  {/* New preset form */}
+                  <div className="space-y-2 bg-card-light/40 dark:bg-sidebar-dark/30 p-3 rounded-xl border border-border-light dark:border-border-dark">
+                    <input
+                      type="text"
+                      value={newPresetName}
+                      onChange={(e) => setNewPresetName(e.target.value)}
+                      placeholder={t.presetName}
+                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                    />
+                    <textarea
+                      rows={3}
+                      value={newPresetContent}
+                      onChange={(e) => setNewPresetContent(e.target.value)}
+                      placeholder={t.presetContentPlaceholder}
+                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100 resize-none"
+                    />
+                    <button
+                      onClick={handleSavePreset}
+                      disabled={!newPresetName.trim() || !newPresetContent.trim()}
+                      className="flex items-center space-x-1.5 px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                    >
+                      <Plus className="w-3.5 h-3.5" />
+                      <span>{t.savePreset}</span>
+                    </button>
+                  </div>
+
+                  {/* Preset list */}
+                  {store.promptPresets.length === 0 ? (
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-4 select-none">{t.noPresets}</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {store.promptPresets.map((p) => (
+                        <div key={p.id} className="group flex items-start justify-between p-3 rounded-xl border border-border-light dark:border-border-dark bg-card-light/20 dark:bg-sidebar-dark/10">
+                          <div className="min-w-0 flex-1 pr-3">
+                            <div className="flex items-center space-x-1.5 mb-1">
+                              <FileText className="w-3.5 h-3.5 text-amber-600 dark:text-amber-500 shrink-0" />
+                              <span className="text-xs font-bold text-gray-800 dark:text-gray-200 truncate">{p.name}</span>
+                            </div>
+                            <p className="text-[11px] text-gray-500 dark:text-gray-400 line-clamp-2 leading-relaxed">{p.content}</p>
+                          </div>
+                          <div className="flex items-center space-x-1 shrink-0">
+                            <button
+                              onClick={() => store.updateSetting('globalSystemPrompt', p.content)}
+                              title={t.applyToGlobal}
+                              className="px-2 py-1 text-[10px] font-bold bg-amber-500/10 text-amber-600 dark:text-amber-400 rounded-md hover:bg-amber-500/20 cursor-pointer transition-colors"
+                            >
+                              {t.useThisPreset}
+                            </button>
+                            <button
+                              onClick={() => store.deletePromptPreset(p.id)}
+                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'pricing' && (
+              <div className="flex-1 p-6 space-y-5 overflow-y-auto">
+                <div className="space-y-1.5 select-none">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.pricing}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-450 leading-relaxed">{t.pricingDesc}</p>
+                </div>
+
+                {/* Add price form */}
+                <div className="grid grid-cols-12 gap-2 bg-card-light/40 dark:bg-sidebar-dark/30 p-3 rounded-xl border border-border-light dark:border-border-dark items-center">
+                  <input
+                    type="text"
+                    value={newPriceModel}
+                    onChange={(e) => setNewPriceModel(e.target.value)}
+                    placeholder={t.priceModelPlaceholder}
+                    className="col-span-5 px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                  />
+                  <input
+                    type="number" step="0.01"
+                    value={newPriceIn}
+                    onChange={(e) => setNewPriceIn(e.target.value)}
+                    placeholder={t.priceInputLabel}
+                    className="col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                  />
+                  <input
+                    type="number" step="0.01"
+                    value={newPriceOut}
+                    onChange={(e) => setNewPriceOut(e.target.value)}
+                    placeholder={t.priceOutputLabel}
+                    className="col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                  />
+                  <button
+                    onClick={handleAddPrice}
+                    className="col-span-1 flex items-center justify-center p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                {/* User overrides list */}
+                <div className="space-y-1.5">
+                  {Object.keys(store.modelPricing).length === 0 ? (
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-4 select-none">{t.noModels}</p>
+                  ) : (
+                    Object.entries(store.modelPricing).map(([modelId, price]) => (
+                      <div key={modelId} className="group flex items-center justify-between py-2 px-3 rounded-lg border border-border-light dark:border-border-dark bg-card-light/20 dark:bg-sidebar-dark/10">
+                        <span className="text-xs font-mono text-gray-800 dark:text-gray-200 truncate pr-3">{modelId}</span>
+                        <div className="flex items-center space-x-3 shrink-0">
+                          <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400">
+                            ${(price as ModelPrice).input} / ${(price as ModelPrice).output} <span className="text-gray-400">/1M</span>
+                          </span>
+                          <button
+                            onClick={() => store.removeModelPrice(modelId)}
+                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
+              </div>
+            )}
+
+            {activeTab === 'security' && (
+              <div className="flex-1 p-6 space-y-5 overflow-y-auto">
+                <div className="space-y-1.5 select-none">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.security}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-450 leading-relaxed">{t.encryptKeysDesc}</p>
+                </div>
+
+                <div className="p-4 rounded-2xl border border-border-light dark:border-border-dark bg-card-light/30 dark:bg-sidebar-dark/20 space-y-4">
+                  <div className="flex items-center space-x-2">
+                    <Lock className={`w-4 h-4 ${store.keyEncryptionEnabled ? 'text-emerald-500' : 'text-gray-400'}`} />
+                    <span className="text-sm font-bold text-gray-800 dark:text-gray-200">{t.encryptKeys}</span>
+                    {store.keyEncryptionEnabled && (
+                      <span className="px-2 py-0.5 text-[10px] font-bold bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 rounded-full">ON</span>
+                    )}
+                  </div>
+
+                  {!store.keyEncryptionEnabled ? (
+                    <div className="space-y-2.5">
+                      <input
+                        type="password"
+                        value={encPass}
+                        onChange={(e) => setEncPass(e.target.value)}
+                        placeholder={t.passphrase}
+                        className="w-full px-3.5 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                      />
+                      <input
+                        type="password"
+                        value={encPass2}
+                        onChange={(e) => setEncPass2(e.target.value)}
+                        placeholder={t.passphraseConfirm}
+                        className="w-full px-3.5 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 dark:text-gray-100"
+                      />
+                      {encError && <p className="text-xs text-red-500 font-semibold">{encError}</p>}
+                      <button
+                        onClick={handleEnableEncryption}
+                        disabled={!encPass || !encPass2}
+                        className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-40 text-white rounded-xl text-sm font-bold cursor-pointer transition-colors"
+                      >
+                        {t.enableEncryption}
+                      </button>
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => store.disableKeyEncryption()}
+                      className="px-4 py-2.5 bg-red-650 hover:bg-red-700 text-white rounded-xl text-sm font-bold cursor-pointer transition-colors shadow-sm"
+                    >
+                      {t.disableEncryption}
+                    </button>
+                  )}
                 </div>
               </div>
             )}

@@ -1,13 +1,14 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatStore } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
-import { db, type Attachment } from '../services/db';
+import { db, type Attachment, type Citation, type TokenUsage, type ModelPrice } from '../services/db';
 import { extractTextFromPdf, readFileAsText, readFileAsBase64 } from '../utils/fileParser';
+import { estimateTokens, computeCost, formatCost, DEFAULT_MODEL_PRICING } from '../utils/tokens';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import { 
   Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Code, Pencil, AlignLeft, Compass,
-  ChevronLeft, ChevronRight, Columns, Scale, GitFork
+  ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe
 } from 'lucide-react';
 
 export const ChatArea: React.FC = () => {
@@ -18,6 +19,7 @@ export const ChatArea: React.FC = () => {
   const [isUploading, setIsUploading] = useState(false);
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showEffortDropdown, setShowEffortDropdown] = useState(false);
+  const [showPromptDropdown, setShowPromptDropdown] = useState(false);
   
   // States for variant comparison and action dropdowns
   const [compareStates, setCompareStates] = useState<Record<string, boolean>>({});
@@ -26,6 +28,7 @@ export const ChatArea: React.FC = () => {
   
   // Model search state
   const [modelSearchQuery, setModelSearchQuery] = useState('');
+  const [compareSearchQuery, setCompareSearchQuery] = useState('');
 
   // Fix #13: inline custom effort input (replaces browser prompt())
   const [customEffortVisible, setCustomEffortVisible] = useState(false);
@@ -35,6 +38,7 @@ export const ChatArea: React.FC = () => {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
   const effortDropdownRef = useRef<HTMLDivElement>(null);
+  const promptDropdownRef = useRef<HTMLDivElement>(null);
   const dropdownCompareRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -55,6 +59,9 @@ export const ChatArea: React.FC = () => {
       }
       if (effortDropdownRef.current && !effortDropdownRef.current.contains(e.target as Node)) {
         setShowEffortDropdown(false);
+      }
+      if (promptDropdownRef.current && !promptDropdownRef.current.contains(e.target as Node)) {
+        setShowPromptDropdown(false);
       }
       if (dropdownCompareRef.current && !dropdownCompareRef.current.contains(e.target as Node)) {
         setCompareDropdownOpen(null);
@@ -107,6 +114,35 @@ export const ChatArea: React.FC = () => {
     group: 'Unknown',
   };
 
+  // Merge default prices with user overrides (user wins)
+  const pricing: Record<string, ModelPrice> = { ...DEFAULT_MODEL_PRICING, ...store.modelPricing };
+
+  // Pre-send token estimate (input text + attachment text content)
+  const estimatedInputTokens = (() => {
+    let text = inputText;
+    for (const a of attachments) {
+      if (a.type !== 'image') text += '\n' + a.content;
+    }
+    return estimateTokens(text);
+  })();
+
+  // Whether the active model supports a built-in web search tool.
+  // The request *format* is decided per-provider in api.ts (it follows the
+  // endpoint you hit — e.g. Claude via OpenRouter still uses OpenAI-style),
+  // but whether to even offer the toggle is best judged by model name too,
+  // so custom/OpenRouter proxies (named anything) still surface it.
+  const supportsWebSearch = (() => {
+    const hay = `${activeModel.group} ${activeModel.id}`.toLowerCase();
+    return (
+      hay.includes('gemini') || hay.includes('google') ||
+      hay.includes('claude') || hay.includes('anthropic') ||
+      hay.includes('sonnet') || hay.includes('opus') || hay.includes('haiku') ||
+      hay.includes('openai') || hay.includes('chatgpt') || hay.includes('gpt-') ||
+      hay.includes('openrouter') || hay.includes('perplexity') || hay.includes('sonar') ||
+      hay.includes('grok')
+    );
+  })();
+
   const getEffortOptions = () => {
     const grp = activeModel.group.toLowerCase();
     let baseOptions = [];
@@ -152,15 +188,26 @@ export const ChatArea: React.FC = () => {
     setModelSearchQuery('');
   };
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files) return;
+  // Apply a prompt preset to the current chat's system prompt (per-chat),
+  // creating a chat first if none is active.
+  const applyPromptPreset = async (content: string) => {
+    let chatId = store.activeChatId;
+    if (!chatId) {
+      chatId = await store.createChat();
+    }
+    await db.chats.update(chatId, { systemPrompt: content });
+    await store.loadChats();
+    setShowPromptDropdown(false);
+  };
+
+  const processFiles = async (files: FileList | File[]) => {
+    const fileArray = Array.from(files);
+    if (fileArray.length === 0) return;
 
     setIsUploading(true);
     const newAttachments: Attachment[] = [];
 
-    for (let i = 0; i < files.length; i++) {
-      const file = files[i];
+    for (const file of fileArray) {
       try {
         if (file.type.startsWith('image/')) {
           const base64 = await readFileAsBase64(file);
@@ -194,8 +241,49 @@ export const ChatArea: React.FC = () => {
 
     setAttachments((prev) => [...prev, ...newAttachments]);
     setIsUploading(false);
-    
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files) return;
+    await processFiles(files);
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  const handlePaste = async (e: React.ClipboardEvent) => {
+    const items = e.clipboardData?.items;
+    if (!items) return;
+    const imageFiles: File[] = [];
+    for (const item of Array.from(items)) {
+      if (item.kind === 'file' && item.type.startsWith('image/')) {
+        const file = item.getAsFile();
+        if (file) imageFiles.push(new File([file], `pasted-image-${Date.now()}.png`, { type: file.type }));
+      }
+    }
+    if (imageFiles.length > 0) {
+      e.preventDefault();
+      await processFiles(imageFiles);
+    }
+  };
+
+  const [isDragging, setIsDragging] = useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    if (!e.currentTarget.contains(e.relatedTarget as Node)) {
+      setIsDragging(false);
+    }
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const files = e.dataTransfer?.files;
+    if (files && files.length > 0) await processFiles(files);
   };
 
   const removeAttachment = (index: number) => {
@@ -386,6 +474,53 @@ export const ChatArea: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Web Search Toggle */}
+          {supportsWebSearch && (
+            <button
+              onClick={() => store.setActiveWebSearch(!store.activeWebSearch)}
+              title={t.webSearchTooltip}
+              className={`flex items-center space-x-2 px-3.5 py-2 border rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer ${
+                store.activeWebSearch
+                  ? 'bg-amber-500/10 border-amber-500/50 text-amber-600 dark:text-amber-400'
+                  : 'hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border-border-light/60 dark:border-border-dark/40'
+              }`}
+            >
+              <Globe className="w-4 h-4" />
+              <span className="font-heading">{t.webSearchLabel}</span>
+            </button>
+          )}
+
+          {/* Prompt preset picker */}
+          {store.promptPresets.length > 0 && (
+            <div className="relative" ref={promptDropdownRef}>
+              <button
+                onClick={() => setShowPromptDropdown(!showPromptDropdown)}
+                title={t.promptPresets}
+                className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
+              >
+                <FileText className="w-4 h-4 text-gray-400" />
+                <span className="font-heading hidden sm:inline">{t.prompts}</span>
+                <ChevronDown className="w-4 h-4 text-gray-400" />
+              </button>
+
+              {showPromptDropdown && (
+                <div className="absolute left-0 mt-2 w-64 bg-card-light/95 dark:bg-card-dark/95 backdrop-blur-xl border border-border-light dark:border-border-dark rounded-2xl shadow-2xl z-50 p-1.5 max-h-[320px] overflow-y-auto animate-scale-up">
+                  {store.promptPresets.map((p) => (
+                    <button
+                      key={p.id}
+                      onClick={() => applyPromptPreset(p.content)}
+                      className="w-full text-left px-3 py-2 rounded-lg hover:bg-amber-500/5 dark:hover:bg-amber-500/10 transition-colors cursor-pointer"
+                      title={p.content}
+                    >
+                      <span className="block text-xs font-semibold text-gray-700 dark:text-gray-300 truncate">{p.name}</span>
+                      <span className="block text-[10px] text-gray-400 dark:text-gray-500 truncate">{p.content}</span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
 
         {/* Action icons / details */}
@@ -516,7 +651,18 @@ export const ChatArea: React.FC = () => {
                     {/* Content Box (or Compare grid) */}
                     {isCompareMode && msg.variants ? (
                       /* Side-by-Side Compare Grid */
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 w-full mt-1.5">
+                      <div className="w-full mt-1.5">
+                        {/* Back / exit compare mode button */}
+                        <div className="flex justify-end mb-2">
+                          <button
+                            onClick={() => setCompareStates({ ...compareStates, [msg.id]: false })}
+                            className="flex items-center space-x-1 px-2.5 py-1 rounded-lg border border-border-light/50 dark:border-border-dark/50 bg-card-light dark:bg-card-dark text-[10px] font-bold text-gray-450 hover:text-amber-600 dark:hover:text-amber-400 transition-colors cursor-pointer"
+                          >
+                            <ChevronLeft className="w-3 h-3" />
+                            <span>{t.normalView}</span>
+                          </button>
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                         {msg.variants.map((v, vIdx) => (
                           <div
                             key={v.id}
@@ -581,9 +727,13 @@ export const ChatArea: React.FC = () => {
                               >
                                 {v.content || '...'}
                               </ReactMarkdown>
+                              {v.citations && v.citations.length > 0 && (
+                                <Sources citations={v.citations} label={t.sourcesLabel} />
+                              )}
                             </div>
                           </div>
                         ))}
+                        </div>
                       </div>
                     ) : (
                       /* Standard Content Box */
@@ -659,7 +809,16 @@ export const ChatArea: React.FC = () => {
                             {msg.content || '...'}
                           </ReactMarkdown>
                         )}
+
+                        {!isUser && msg.citations && msg.citations.length > 0 && (
+                          <Sources citations={msg.citations} label={t.sourcesLabel} />
+                        )}
                       </div>
+                    )}
+
+                    {/* Token usage / cost badge (Assistant only) */}
+                    {!isUser && msg.usage && (msg.usage.inputTokens > 0 || msg.usage.outputTokens > 0) && (
+                      <UsageBadge usage={msg.usage} modelId={msg.modelUsed || activeModel.id} pricing={pricing} t={t} />
                     )}
 
                     {/* Bottom Action strip (Assistant only, non-empty) */}
@@ -681,7 +840,10 @@ export const ChatArea: React.FC = () => {
                         {/* Compare with another model button */}
                         <div className="relative">
                           <button
-                            onClick={() => setCompareDropdownOpen(compareDropdownOpen === msg.id ? null : msg.id)}
+                            onClick={() => {
+                              setCompareSearchQuery('');
+                              setCompareDropdownOpen(compareDropdownOpen === msg.id ? null : msg.id);
+                            }}
                             className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
                             title={t.compare}
                           >
@@ -697,7 +859,20 @@ export const ChatArea: React.FC = () => {
                               <div className="px-2.5 py-1 text-[8px] font-bold text-gray-400 uppercase tracking-wider border-b border-border-light/40 dark:border-border-dark/40 mb-1 select-none">
                                 {t.compareModelSelect}
                               </div>
-                              {allModels.map((m) => (
+                              {/* Search bar */}
+                              <div className="p-1 relative mb-1">
+                                <input
+                                  type="text"
+                                  placeholder={t.searchModels}
+                                  value={compareSearchQuery}
+                                  onChange={(e) => setCompareSearchQuery(e.target.value)}
+                                  onClick={(e) => e.stopPropagation()}
+                                  className="w-full pl-7 pr-2 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-[10px] border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                                  autoFocus
+                                />
+                                <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                              </div>
+                              {allModels.filter((m) => m.name.toLowerCase().includes(compareSearchQuery.toLowerCase())).map((m) => (
                                 <button
                                   key={m.id}
                                   onClick={() => {
@@ -751,7 +926,17 @@ export const ChatArea: React.FC = () => {
 
       {/* Input container at the bottom */}
       <div className="p-4 shrink-0 bg-transparent">
-        <div className="max-w-3xl mx-auto relative flex flex-col border border-border-light dark:border-border-dark rounded-2xl bg-card-light/90 dark:bg-card-dark/95 shadow-xl shadow-black/5 dark:shadow-black/30 backdrop-blur-xl focus-within:border-amber-600 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all duration-300">
+        <div
+          className={`max-w-3xl mx-auto relative flex flex-col border rounded-2xl bg-card-light/90 dark:bg-card-dark/95 shadow-xl shadow-black/5 dark:shadow-black/30 backdrop-blur-xl focus-within:border-amber-600 focus-within:ring-2 focus-within:ring-amber-500/10 transition-all duration-300 ${isDragging ? 'border-amber-500 ring-2 ring-amber-500/30' : 'border-border-light dark:border-border-dark'}`}
+          onDragOver={handleDragOver}
+          onDragLeave={handleDragLeave}
+          onDrop={handleDrop}
+        >
+          {isDragging && (
+            <div className="absolute inset-0 z-10 flex items-center justify-center rounded-2xl bg-amber-500/10 border-2 border-dashed border-amber-500 pointer-events-none">
+              <span className="text-amber-600 dark:text-amber-400 text-sm font-medium">ここにドロップ</span>
+            </div>
+          )}
           
           {/* File attachments list above text field */}
           {attachments.length > 0 && (
@@ -790,7 +975,7 @@ export const ChatArea: React.FC = () => {
               ref={fileInputRef}
               onChange={handleFileUpload}
               multiple
-              accept="image/*,.pdf,.txt,.js,.ts,.html,.css,.json,.md"
+              accept="image/*,.pdf,.txt,.md,.csv,.tsv,.json,.yaml,.yml,.xml,.js,.jsx,.ts,.tsx,.py,.java,.c,.cpp,.h,.cs,.go,.rs,.rb,.php,.swift,.kt,.sh,.sql,.html,.css,.scss,.vue,.svelte,.toml,.ini,.log"
               className="hidden"
             />
 
@@ -800,6 +985,7 @@ export const ChatArea: React.FC = () => {
               value={inputText}
               onChange={(e) => setInputText(e.target.value)}
               onKeyDown={handleKeyDown}
+              onPaste={handlePaste}
               placeholder={t.inputTextPlaceholder}
               className="flex-1 px-3 py-2 bg-transparent focus:outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400 resize-none max-h-[200px]"
             />
@@ -831,6 +1017,11 @@ export const ChatArea: React.FC = () => {
         </div>
 
         <p className="text-[10px] text-gray-400 text-center mt-2.5 font-sans select-none tracking-wide">
+          {estimatedInputTokens > 0 && (
+            <span className="font-mono text-gray-450 dark:text-gray-500 mr-2">
+              ~{estimatedInputTokens} {t.tokens} ({t.estTokensLabel})
+            </span>
+          )}
           {t.disclaimer}
         </p>
       </div>
@@ -840,7 +1031,60 @@ export const ChatArea: React.FC = () => {
 };
 
 // Sub-components to keep layout neat
-const ActionButton: React.FC<{ 
+const Sources: React.FC<{ citations: Citation[]; label: string }> = ({ citations, label }) => {
+  if (!citations || citations.length === 0) return null;
+
+  const hostOf = (url: string) => {
+    try { return new URL(url).hostname.replace(/^www\./, ''); } catch { return url; }
+  };
+
+  return (
+    <div className="mt-3 pt-2.5 border-t border-border-light/40 dark:border-border-dark/40 select-none">
+      <div className="flex items-center space-x-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 mb-1.5 font-sans uppercase tracking-wider">
+        <Globe className="w-3 h-3" />
+        <span>{label}</span>
+        <span className="text-gray-300 dark:text-gray-600">({citations.length})</span>
+      </div>
+      <div className="flex flex-wrap gap-1.5">
+        {citations.map((c, i) => (
+          <a
+            key={`${c.url}-${i}`}
+            href={c.url}
+            target="_blank"
+            rel="noopener noreferrer"
+            title={c.title || c.url}
+            className="flex items-center space-x-1.5 max-w-[260px] px-2.5 py-1 bg-card-light dark:bg-card-dark border border-border-light dark:border-border-dark rounded-lg text-[11px] text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 hover:border-amber-500/40 transition-colors"
+          >
+            <span className="text-gray-400 dark:text-gray-500 font-mono text-[9px]">{i + 1}</span>
+            <span className="truncate">{c.title || hostOf(c.url)}</span>
+          </a>
+        ))}
+      </div>
+    </div>
+  );
+};
+
+const UsageBadge: React.FC<{
+  usage: TokenUsage;
+  modelId: string;
+  pricing: Record<string, ModelPrice>;
+  t: any;
+}> = ({ usage, modelId, pricing, t }) => {
+  const total = usage.inputTokens + usage.outputTokens;
+  const cost = computeCost(modelId, usage.inputTokens, usage.outputTokens, pricing);
+  return (
+    <div className="flex items-center space-x-2 px-1 mt-1 text-[10px] font-mono text-gray-400 dark:text-gray-500 select-none">
+      <span title={`${t.inLabel}: ${usage.inputTokens} / ${t.outLabel}: ${usage.outputTokens}`}>
+        {usage.inputTokens}↑ {usage.outputTokens}↓ · {total} {t.tokens}
+      </span>
+      {cost != null && (
+        <span className="text-amber-600/70 dark:text-amber-500/70">· {formatCost(cost)}</span>
+      )}
+    </div>
+  );
+};
+
+const ActionButton: React.FC<{
   icon: React.ReactNode; 
   label: string; 
   copiedLabel: string;

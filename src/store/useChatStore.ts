@@ -1,6 +1,16 @@
 import { create } from 'zustand';
-import { db, type Chat, type Message, type MessageVariant, type Attachment, type ProviderConfig } from '../services/db';
+import { db, type Chat, type Message, type MessageVariant, type Attachment, type ProviderConfig, type Citation, type TokenUsage, type PromptPreset, type ModelPrice } from '../services/db';
 import { streamChatCompletion } from '../services/api';
+import { encryptString, decryptString, type EncryptedPayload } from '../utils/crypto';
+
+export interface SearchResult {
+  chatId: string;
+  chatTitle: string;
+  messageId: string;
+  role: string;
+  snippet: string;
+  timestamp: number;
+}
 
 interface ChatState {
   // Data State
@@ -9,16 +19,25 @@ interface ChatState {
   activeChatId: string | null;
   activeModelId: string;
   activeEffort: string;
-  
+  activeWebSearch: boolean;
+
   // Settings State
   providers: Record<string, ProviderConfig>;
   globalSystemPrompt: string;
   theme: 'light' | 'dark' | 'system';
   language: 'ja' | 'en' | 'zh';
-  
+  promptPresets: PromptPreset[];
+  modelPricing: Record<string, ModelPrice>;
+
+  // Key encryption State
+  keyEncryptionEnabled: boolean;
+  keysLocked: boolean;           // true when encryption is on but keys not yet unlocked
+  sessionPassphrase: string | null; // held in memory only
+
   // UI State
   sidebarOpen: boolean;
   settingsOpen: boolean;
+  searchOpen: boolean;
   isGenerating: boolean;
   abortController: AbortController | null;
   
@@ -36,7 +55,8 @@ interface ChatState {
   setActiveModelId: (modelId: string) => Promise<void>;
   generationId: string | null;
   setActiveEffort: (effort: string) => Promise<void>;
-  
+  setActiveWebSearch: (enabled: boolean) => Promise<void>;
+
   // Chat Actions
   loadChats: () => Promise<void>;
   selectChat: (chatId: string | null) => Promise<void>;
@@ -53,6 +73,25 @@ interface ChatState {
   stopGeneration: () => void;
   toggleSidebar: () => void;
   setSettingsOpen: (open: boolean) => void;
+  setSearchOpen: (open: boolean) => void;
+
+  // Search
+  searchMessages: (query: string) => Promise<SearchResult[]>;
+
+  // Prompt presets
+  addPromptPreset: (name: string, content: string) => Promise<void>;
+  updatePromptPreset: (id: string, name: string, content: string) => Promise<void>;
+  deletePromptPreset: (id: string) => Promise<void>;
+
+  // Pricing
+  setModelPrice: (modelId: string, price: ModelPrice) => Promise<void>;
+  removeModelPrice: (modelId: string) => Promise<void>;
+
+  // Key encryption
+  persistProviders: () => Promise<void>;
+  enableKeyEncryption: (passphrase: string) => Promise<void>;
+  disableKeyEncryption: () => Promise<void>;
+  unlockKeys: (passphrase: string) => Promise<boolean>;
 }
 
 const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
@@ -128,7 +167,11 @@ const DEFAULT_SETTINGS: Record<string, any> = {
   language: 'ja',
   activeModelId: 'gemini-1.5-flash',
   activeEffort: 'none',
+  activeWebSearch: false,
   sidebarOpen: 'true',
+  promptPresets: [],
+  modelPricing: {},
+  keyEncryptionEnabled: false,
 };
 
 export const useChatStore = create<ChatState>((set, get) => ({
@@ -137,14 +180,22 @@ export const useChatStore = create<ChatState>((set, get) => ({
   activeChatId: null,
   activeModelId: 'gemini-1.5-flash',
   activeEffort: 'none',
-  
+  activeWebSearch: false,
+
   providers: DEFAULT_PROVIDERS,
   globalSystemPrompt: 'You are a helpful assistant.',
   theme: 'dark',
   language: 'ja',
-  
+  promptPresets: [],
+  modelPricing: {},
+
+  keyEncryptionEnabled: false,
+  keysLocked: false,
+  sessionPassphrase: null,
+
   sidebarOpen: true,
   settingsOpen: false,
+  searchOpen: false,
   isGenerating: false,
   abortController: null,
   generationId: null,
@@ -164,6 +215,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const theme = getSetting('theme');
     const activeModelId = getSetting('activeModelId');
     const activeEffort = getSetting('activeEffort') || 'none';
+    const activeWebSearch = getSetting('activeWebSearch') === true || getSetting('activeWebSearch') === 'true';
     const sidebarOpenVal = getSetting('sidebarOpen');
     
     let loadedProviders = getSetting('providers');
@@ -193,6 +245,14 @@ export const useChatStore = create<ChatState>((set, get) => ({
       await db.settings.put({ key: 'language', value: loadedLanguage });
     }
 
+    const promptPresets = getSetting('promptPresets') || [];
+    const modelPricing = getSetting('modelPricing') || {};
+    const keyEncryptionEnabled = getSetting('keyEncryptionEnabled') === true;
+    const encryptedKeys = settingsMap['encryptedKeys'];
+    // If encryption is on and an encrypted blob exists, keys live only inside it;
+    // the providers loaded from DB have empty apiKey until the user unlocks.
+    const keysLocked = keyEncryptionEnabled && !!encryptedKeys;
+
     set({
       providers: loadedProviders,
       globalSystemPrompt: getSetting('globalSystemPrompt'),
@@ -200,6 +260,12 @@ export const useChatStore = create<ChatState>((set, get) => ({
       language: loadedLanguage,
       activeModelId,
       activeEffort,
+      activeWebSearch,
+      promptPresets,
+      modelPricing,
+      keyEncryptionEnabled,
+      keysLocked,
+      sessionPassphrase: null,
       sidebarOpen: sidebarOpenVal === 'true' || sidebarOpenVal === true,
     });
 
@@ -229,7 +295,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     };
 
     set({ providers: currentProviders });
-    await db.settings.put({ key: 'providers', value: currentProviders });
+    await get().persistProviders();
   },
 
   addProvider: async (name, baseUrl) => {
@@ -248,7 +314,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     currentProviders[id] = newProvider;
 
     set({ providers: currentProviders });
-    await db.settings.put({ key: 'providers', value: currentProviders });
+    await get().persistProviders();
   },
 
   deleteProvider: async (providerId) => {
@@ -259,7 +325,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
     delete currentProviders[providerId];
 
     set({ providers: currentProviders });
-    await db.settings.put({ key: 'providers', value: currentProviders });
+    await get().persistProviders();
   },
 
   testProviderConnection: async (providerId) => {
@@ -432,6 +498,19 @@ export const useChatStore = create<ChatState>((set, get) => ({
     }
   },
 
+  setActiveWebSearch: async (enabled) => {
+    set({ activeWebSearch: enabled });
+    await db.settings.put({ key: 'activeWebSearch', value: enabled });
+
+    const activeChatId = get().activeChatId;
+    if (activeChatId) {
+      await db.chats.update(activeChatId, { webSearch: enabled });
+      set(state => ({
+        chats: state.chats.map(c => c.id === activeChatId ? { ...c, webSearch: enabled } : c),
+      }));
+    }
+  },
+
   loadChats: async () => {
     const chatsList = await db.chats.orderBy('updatedAt').reverse().toArray();
     set({ chats: chatsList });
@@ -450,6 +529,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
         messages: chatMessages,
         activeModelId: chat?.modelId || get().activeModelId,
         activeEffort: chat?.effort || 'none',
+        activeWebSearch: chat?.webSearch ?? false,
       });
     } else {
       set({ messages: [] });
@@ -463,6 +543,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       modelId: modelId || get().activeModelId,
       temperature: 0.7,
       effort: get().activeEffort,
+      webSearch: get().activeWebSearch,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -611,7 +692,30 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       let accumulatedText = '';
       let accumulatedThinking = '';
-      
+      let accumulatedCitations: Citation[] = [];
+      let accumulatedUsage: TokenUsage | null = null;
+
+      const applyUsage = async (usage: { inputTokens: number; outputTokens: number }) => {
+        accumulatedUsage = { ...usage };
+        set((state) => ({
+          messages: state.messages.map((m) => {
+            if (m.id === assistantMsgId) {
+              const updatedVariants = [...(m.variants || [])];
+              const activeIndex = m.activeVariantIndex ?? 0;
+              if (updatedVariants[activeIndex]) {
+                updatedVariants[activeIndex] = { ...updatedVariants[activeIndex], usage: accumulatedUsage! };
+              }
+              return { ...m, usage: accumulatedUsage!, variants: updatedVariants };
+            }
+            return m;
+          }),
+        }));
+        const targetMsg = get().messages.find(m => m.id === assistantMsgId);
+        if (targetMsg) {
+          await db.messages.update(assistantMsgId, { usage: accumulatedUsage!, variants: targetMsg.variants });
+        }
+      };
+
       await streamChatCompletion(
         {
           providerConfig,
@@ -621,10 +725,11 @@ export const useChatStore = create<ChatState>((set, get) => ({
           systemPrompt,
           temperature,
           effort: get().activeEffort,
+          webSearch: get().activeWebSearch,
         },
         async (chunk) => {
           accumulatedText += chunk;
-          
+
           set((state) => ({
             messages: state.messages.map((m) => {
               if (m.id === assistantMsgId) {
@@ -680,13 +785,50 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
           const targetMsg = get().messages.find(m => m.id === assistantMsgId);
           if (targetMsg) {
-            await db.messages.update(assistantMsgId, { 
+            await db.messages.update(assistantMsgId, {
               thinking: accumulatedThinking,
               variants: targetMsg.variants,
             });
           }
         },
-        controller.signal
+        controller.signal,
+        async (citations) => {
+          for (const c of citations) {
+            if (!accumulatedCitations.some(e => e.url === c.url)) {
+              accumulatedCitations.push(c);
+            }
+          }
+
+          set((state) => ({
+            messages: state.messages.map((m) => {
+              if (m.id === assistantMsgId) {
+                const updatedVariants = [...(m.variants || [])];
+                const activeIndex = m.activeVariantIndex ?? 0;
+                if (updatedVariants[activeIndex]) {
+                  updatedVariants[activeIndex] = {
+                    ...updatedVariants[activeIndex],
+                    citations: [...accumulatedCitations],
+                  };
+                }
+                return {
+                  ...m,
+                  citations: [...accumulatedCitations],
+                  variants: updatedVariants,
+                };
+              }
+              return m;
+            }),
+          }));
+
+          const targetMsg = get().messages.find(m => m.id === assistantMsgId);
+          if (targetMsg) {
+            await db.messages.update(assistantMsgId, {
+              citations: [...accumulatedCitations],
+              variants: targetMsg.variants,
+            });
+          }
+        },
+        applyUsage
       );
 
     } catch (error: any) {
@@ -852,6 +994,28 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
       let accumulatedText = '';
       let accumulatedThinking = '';
+      let accumulatedCitations: Citation[] = [];
+      let accumulatedUsage: TokenUsage | null = null;
+
+      const applyUsage = async (usage: { inputTokens: number; outputTokens: number }) => {
+        accumulatedUsage = { ...usage };
+        set((state) => ({
+          messages: state.messages.map((m) => {
+            if (m.id === assistantMsg.id) {
+              const updatedVariants = [...(m.variants || [])];
+              if (updatedVariants[newActiveIndex]) {
+                updatedVariants[newActiveIndex] = { ...updatedVariants[newActiveIndex], usage: accumulatedUsage! };
+              }
+              return { ...m, usage: accumulatedUsage!, variants: updatedVariants };
+            }
+            return m;
+          }),
+        }));
+        const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
+        if (targetMsg) {
+          await db.messages.update(assistantMsg.id, { usage: accumulatedUsage!, variants: targetMsg.variants });
+        }
+      };
 
       await streamChatCompletion(
         {
@@ -863,6 +1027,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
           systemPrompt,
           temperature,
           effort: get().activeEffort,
+          webSearch: get().activeWebSearch,
         },
         async (chunk) => {
           accumulatedText += chunk;
@@ -926,7 +1091,43 @@ export const useChatStore = create<ChatState>((set, get) => ({
             });
           }
         },
-        controller.signal
+        controller.signal,
+        async (citations) => {
+          for (const c of citations) {
+            if (!accumulatedCitations.some(e => e.url === c.url)) {
+              accumulatedCitations.push(c);
+            }
+          }
+
+          set((state) => ({
+            messages: state.messages.map((m) => {
+              if (m.id === assistantMsg.id) {
+                const updatedVariants = [...(m.variants || [])];
+                if (updatedVariants[newActiveIndex]) {
+                  updatedVariants[newActiveIndex] = {
+                    ...updatedVariants[newActiveIndex],
+                    citations: [...accumulatedCitations],
+                  };
+                }
+                return {
+                  ...m,
+                  citations: [...accumulatedCitations],
+                  variants: updatedVariants,
+                };
+              }
+              return m;
+            }),
+          }));
+
+          const targetMsg = get().messages.find(m => m.id === assistantMsg.id);
+          if (targetMsg) {
+            await db.messages.update(assistantMsg.id, {
+              citations: [...accumulatedCitations],
+              variants: targetMsg.variants,
+            });
+          }
+        },
+        applyUsage
       );
     } catch (error: any) {
       if (error.name === 'AbortError') {
@@ -992,6 +1193,8 @@ export const useChatStore = create<ChatState>((set, get) => ({
       content: variant.content,
       thinking: variant.thinking || '',
       modelUsed: variant.modelUsed,
+      citations: variant.citations || [],
+      usage: variant.usage,
     };
 
     await db.messages.put(updatedMsg);
@@ -1017,6 +1220,7 @@ export const useChatStore = create<ChatState>((set, get) => ({
       modelId: activeChat.modelId,
       temperature: activeChat.temperature,
       effort: activeChat.effort,
+      webSearch: activeChat.webSearch,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -1062,5 +1266,132 @@ export const useChatStore = create<ChatState>((set, get) => ({
 
   setSettingsOpen: (open) => {
     set({ settingsOpen: open });
+  },
+
+  setSearchOpen: (open) => {
+    set({ searchOpen: open });
+  },
+
+  // ---- Search ----
+  searchMessages: async (query) => {
+    const q = query.trim().toLowerCase();
+    if (!q) return [];
+
+    const allMessages = await db.messages.toArray();
+    const chatTitles: Record<string, string> = {};
+    (await db.chats.toArray()).forEach((c) => { chatTitles[c.id] = c.title; });
+
+    const results: SearchResult[] = [];
+    for (const m of allMessages) {
+      const content = m.content || '';
+      const idx = content.toLowerCase().indexOf(q);
+      if (idx === -1) continue;
+
+      const start = Math.max(0, idx - 40);
+      const end = Math.min(content.length, idx + q.length + 60);
+      const snippet = (start > 0 ? '…' : '') + content.slice(start, end).replace(/\n/g, ' ') + (end < content.length ? '…' : '');
+
+      results.push({
+        chatId: m.chatId,
+        chatTitle: chatTitles[m.chatId] || 'Chat',
+        messageId: m.id,
+        role: m.role,
+        snippet,
+        timestamp: m.timestamp,
+      });
+    }
+
+    results.sort((a, b) => b.timestamp - a.timestamp);
+    return results.slice(0, 100);
+  },
+
+  // ---- Prompt presets ----
+  addPromptPreset: async (name, content) => {
+    const preset: PromptPreset = { id: crypto.randomUUID(), name, content };
+    const presets = [...get().promptPresets, preset];
+    set({ promptPresets: presets });
+    await db.settings.put({ key: 'promptPresets', value: presets });
+  },
+
+  updatePromptPreset: async (id, name, content) => {
+    const presets = get().promptPresets.map((p) => p.id === id ? { ...p, name, content } : p);
+    set({ promptPresets: presets });
+    await db.settings.put({ key: 'promptPresets', value: presets });
+  },
+
+  deletePromptPreset: async (id) => {
+    const presets = get().promptPresets.filter((p) => p.id !== id);
+    set({ promptPresets: presets });
+    await db.settings.put({ key: 'promptPresets', value: presets });
+  },
+
+  // ---- Pricing ----
+  setModelPrice: async (modelId, price) => {
+    const pricing = { ...get().modelPricing, [modelId]: price };
+    set({ modelPricing: pricing });
+    await db.settings.put({ key: 'modelPricing', value: pricing });
+  },
+
+  removeModelPrice: async (modelId) => {
+    const pricing = { ...get().modelPricing };
+    delete pricing[modelId];
+    set({ modelPricing: pricing });
+    await db.settings.put({ key: 'modelPricing', value: pricing });
+  },
+
+  // ---- Key encryption ----
+  persistProviders: async () => {
+    const { providers, keyEncryptionEnabled, sessionPassphrase } = get();
+
+    if (keyEncryptionEnabled && sessionPassphrase) {
+      // Store providers without plaintext keys, and the keys in an encrypted blob.
+      const keyMap: Record<string, string> = {};
+      const stripped: Record<string, ProviderConfig> = {};
+      for (const [id, p] of Object.entries(providers)) {
+        keyMap[id] = p.apiKey || '';
+        stripped[id] = { ...p, apiKey: '' };
+      }
+      const blob = await encryptString(JSON.stringify(keyMap), sessionPassphrase);
+      await db.settings.put({ key: 'providers', value: stripped });
+      await db.settings.put({ key: 'encryptedKeys', value: blob });
+    } else {
+      await db.settings.put({ key: 'providers', value: providers });
+    }
+  },
+
+  enableKeyEncryption: async (passphrase) => {
+    if (!passphrase) return;
+    set({ keyEncryptionEnabled: true, sessionPassphrase: passphrase, keysLocked: false });
+    await db.settings.put({ key: 'keyEncryptionEnabled', value: true });
+    await get().persistProviders(); // writes encrypted blob + stripped providers
+  },
+
+  disableKeyEncryption: async () => {
+    // Requires keys to be unlocked so we can write them back as plaintext.
+    if (get().keysLocked) return;
+    set({ keyEncryptionEnabled: false, sessionPassphrase: null, keysLocked: false });
+    await db.settings.put({ key: 'keyEncryptionEnabled', value: false });
+    await db.settings.delete('encryptedKeys');
+    await get().persistProviders(); // writes plaintext providers
+  },
+
+  unlockKeys: async (passphrase) => {
+    const blob = (await db.settings.get('encryptedKeys'))?.value as EncryptedPayload | undefined;
+    if (!blob) {
+      set({ keysLocked: false });
+      return true;
+    }
+    try {
+      const json = await decryptString(blob, passphrase);
+      const keyMap = JSON.parse(json) as Record<string, string>;
+      const providers = { ...get().providers };
+      for (const [id, key] of Object.entries(keyMap)) {
+        if (providers[id]) providers[id] = { ...providers[id], apiKey: key };
+      }
+      set({ providers, keysLocked: false, sessionPassphrase: passphrase });
+      return true;
+    } catch {
+      return false; // wrong passphrase (AES-GCM auth failure)
+    }
   },
 }));
