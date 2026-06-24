@@ -1,0 +1,135 @@
+@import "tailwindcss";
+
+@theme {
+  --color-sidebar-dark: #171717;
+  --color-bg-dark: #212121;
+  --color-card-dark: #2f2f2f;
+  --color-border-dark: #383838;
+  
+  --color-sidebar-light: #f9f9f9;
+  --color-bg-light: #ffffff;
+  --color-card-light: #f3f3f3;
+  --color-border-light: #e5e5e5;
+  
+  --color-accent-blue: #3b82f6;
+  --color-accent-green: #10b981;
+}
+
+:root {
+  color-scheme: light dark;
+}
+
+/* Custom scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+  height: 6px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: rgba(156, 163, 175, 0.2);
+  border-radius: 9999px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(156, 163, 175, 0.4);
+}
+
+/* Page structural resets */
+html, body, #root {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100%;
+  font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  overflow: hidden;
+  background-color: transparent;
+}
+
+/* Custom styles for chat messages and markdown styling */
+.prose {
+  font-size: 0.975rem;
+  line-height: 1.6;
+}
+
+.prose p {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+}
+
+.prose p:first-child {
+  margin-top: 0;
+}
+
+.prose p:last-child {
+  margin-bottom: 0;
+}
+
+.prose ul, .prose ol {
+  margin-top: 0.5rem;
+  margin-bottom: 0.5rem;
+  padding-left: 1.5rem;
+}
+
+.prose ul {
+  list-style-type: disc;
+}
+
+.prose ol {
+  list-style-type: decimal;
+}
+
+.prose li {
+  margin-top: 0.25rem;
+  margin-bottom: 0.25rem;
+}
+
+.prose pre {
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  border-radius: 0.5rem;
+  overflow-x: auto;
+}
+
+.prose code {
+  font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+  font-size: 0.85em;
+  padding: 0.125rem 0.25rem;
+  border-radius: 0.25rem;
+}
+
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+}
+
+.prose th, .prose td {
+  border: 1px solid currentColor;
+  opacity: 0.8;
+  padding: 0.5rem 0.75rem;
+  text-align: left;
+}
+
+.prose th {
+  font-weight: 600;
+  background-color: rgba(0, 0, 0, 0.05);
+}
+
+.dark .prose th {
+  background-color: rgba(255, 255, 255, 0.05);
+}
+
+.prose blockquote {
+  border-left: 4px solid currentColor;
+  opacity: 0.8;
+  padding-left: 1rem;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  font-style: italic;
+}
