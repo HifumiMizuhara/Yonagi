@@ -5,6 +5,9 @@ A privacy-first, local-first, multi-provider LLM chat client that runs entirely 
 Himawari has **no backend**. There is no server to deploy, no account to create, and no telemetry. Your chats, settings, and API keys live in your browser's IndexedDB. Requests go directly from your browser to each provider's API.
 
 ---
+## Special Thanks
+
+- [LINUX DO](https://linux.do/) A very friendly community.
 
 ## Highlights
 
@@ -135,4 +138,4 @@ src/
 
 ## License
 
-Private project. All rights reserved unless a license file is added.
+Released under the [MIT License](LICENSE).

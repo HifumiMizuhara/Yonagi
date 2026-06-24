@@ -88,6 +88,24 @@ export const Sidebar: React.FC = () => {
 
   const grouped = groupChats(store.chats);
 
+  // On phones the sidebar is an overlay; collapse it after navigating so the
+  // chat area isn't left hidden behind it.
+  const closeOnMobile = () => {
+    if (typeof window !== 'undefined' && window.innerWidth < 768) {
+      store.toggleSidebar();
+    }
+  };
+
+  const handleSelectChat = (chatId: string) => {
+    store.selectChat(chatId);
+    closeOnMobile();
+  };
+
+  const handleNewChat = () => {
+    store.createChat();
+    closeOnMobile();
+  };
+
   if (!store.sidebarOpen) {
     return (
       <div className="absolute left-4 top-4.5 z-40">
@@ -103,8 +121,14 @@ export const Sidebar: React.FC = () => {
   }
 
   return (
-    <div className="w-66 h-full bg-sidebar-light/75 dark:bg-sidebar-dark/75 backdrop-blur-xl border-r border-border-light/80 dark:border-border-dark flex flex-col z-40 transition-all duration-300">
-      
+    <>
+    {/* Backdrop for the mobile overlay sidebar */}
+    <div
+      onClick={store.toggleSidebar}
+      className="md:hidden fixed inset-0 bg-black/40 backdrop-blur-sm z-40"
+    />
+    <div className="fixed md:relative inset-y-0 left-0 w-66 max-w-[80vw] h-full bg-sidebar-light/95 md:bg-sidebar-light/75 dark:bg-sidebar-dark/95 md:dark:bg-sidebar-dark/75 backdrop-blur-xl border-r border-border-light/80 dark:border-border-dark flex flex-col z-50 md:z-40 transition-all duration-300">
+
       {/* Sidebar Header */}
       <div className="flex items-center justify-between px-4 py-4 border-b border-border-light/70 dark:border-border-dark/70 select-none">
         <div className="flex items-center space-x-2">
@@ -125,7 +149,7 @@ export const Sidebar: React.FC = () => {
             <Search className="w-4 h-4" />
           </button>
           <button
-            onClick={() => store.createChat()}
+            onClick={handleNewChat}
             className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"
             title={t.newChat}
           >
@@ -175,7 +199,7 @@ export const Sidebar: React.FC = () => {
                     return (
                       <div
                         key={chat.id}
-                        onClick={() => !isEditing && store.selectChat(chat.id)}
+                        onClick={() => !isEditing && handleSelectChat(chat.id)}
                         className={`group relative flex items-center w-full px-3 py-2.5 rounded-xl text-xs sm:text-sm cursor-pointer transition-all duration-200 ${
                           isActive
                             ? 'bg-card-light dark:bg-card-dark text-amber-600 dark:text-amber-400 font-semibold shadow-sm border-l-3 border-amber-600 dark:border-amber-500 pl-2'
@@ -263,5 +287,6 @@ export const Sidebar: React.FC = () => {
       </div>
 
     </div>
+    </>
   );
 };

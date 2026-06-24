@@ -216,8 +216,13 @@ export const useChatStore = create<ChatState>((set, get) => ({
     const activeModelId = getSetting('activeModelId');
     const activeEffort = getSetting('activeEffort') || 'none';
     const activeWebSearch = getSetting('activeWebSearch') === true || getSetting('activeWebSearch') === 'true';
-    const sidebarOpenVal = getSetting('sidebarOpen');
-    
+    // Default the sidebar closed on phones (it's an overlay there); honor any
+    // explicitly stored preference on every viewport.
+    const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
+    const sidebarOpenVal = settingsMap['sidebarOpen'] !== undefined
+      ? settingsMap['sidebarOpen']
+      : (isMobile ? 'false' : DEFAULT_SETTINGS['sidebarOpen']);
+
     let loadedProviders = getSetting('providers');
     if (!loadedProviders || typeof loadedProviders !== 'object') {
       loadedProviders = DEFAULT_PROVIDERS;
@@ -232,7 +237,10 @@ export const useChatStore = create<ChatState>((set, get) => ({
       });
     }
 
-    let loadedLanguage = getSetting('language');
+    // Read the raw stored value (not getSetting) so an absent setting stays
+    // undefined and triggers browser-language detection. getSetting would fall
+    // back to DEFAULT_SETTINGS.language ('ja') and the detection never ran.
+    let loadedLanguage = settingsMap['language'];
     if (!loadedLanguage) {
       const browserLang = navigator.language || '';
       if (browserLang.startsWith('ja')) {
