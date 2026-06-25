@@ -37,15 +37,6 @@ export interface StreamParams {
       size: number;
     }>;
   }>;
-  newMessage: {
-    content: string;
-    attachments?: Array<{
-      name: string;
-      type: 'image' | 'pdf' | 'text';
-      content: string;
-      size: number;
-    }>;
-  };
   systemPrompt: string;
   temperature: number;
   effort?: string;
@@ -183,15 +174,16 @@ export async function streamChatCompletion(
 
     const formattedMessages = prepareContext(params, 'gemini');
 
-    const thinkingConfig: any = {};
-    if (params.effort && params.effort !== 'none') {
-      const eff = params.effort.toUpperCase();
-      if (['MINIMAL', 'LOW', 'MEDIUM', 'HIGH'].includes(eff)) {
-        thinkingConfig.thinkingLevel = eff;
-      } else {
-        thinkingConfig.thinkingBudget = 2048; // Fallback budget if not matching level
-      }
-    }
+    // Map app effort levels to Gemini thinkingLevel enum (low/medium/high).
+    // 'minimal' and 'xhigh' are clamped to the nearest supported value.
+    const effortToThinkingLevel: Record<string, string> = {
+      minimal: 'low',
+      low: 'low',
+      medium: 'medium',
+      high: 'high',
+      xhigh: 'high',
+    };
+    const thinkingLevel = params.effort ? effortToThinkingLevel[params.effort.toLowerCase()] : undefined;
 
     body = {
       contents: formattedMessages,
@@ -200,7 +192,7 @@ export async function streamChatCompletion(
       } : undefined,
       generationConfig: {
         temperature: params.temperature,
-        thinkingConfig: Object.keys(thinkingConfig).length > 0 ? thinkingConfig : undefined,
+        ...(thinkingLevel ? { thinkingLevel } : {}),
       },
     };
 

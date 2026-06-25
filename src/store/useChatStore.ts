@@ -266,6 +266,15 @@ export const useChatStore = create<ChatState>((set, get) => {
     const myGenId = crypto.randomUUID();
     set({ abortController: controller, generationId: myGenId });
 
+    let dbWriteTimer: ReturnType<typeof setTimeout> | null = null;
+
+    const flushMessageToDb = async () => {
+      const updatedMessage = get().messages.find((m) => m.id === assistantMessageId);
+      if (updatedMessage) await db.messages.put(updatedMessage);
+    };
+
+    // Update in-memory immediately; batch DB writes to avoid IndexedDB overload
+    // during high-frequency token streams (20–50 chunks/s on fast models).
     const updateAssistantMessage = async (transform: (message: Message) => Message) => {
       set((state) => ({
         messages: state.messages.map((message) =>
@@ -273,10 +282,8 @@ export const useChatStore = create<ChatState>((set, get) => {
         ),
       }));
 
-      const updatedMessage = get().messages.find((message) => message.id === assistantMessageId);
-      if (updatedMessage) {
-        await db.messages.put(updatedMessage);
-      }
+      if (dbWriteTimer) clearTimeout(dbWriteTimer);
+      dbWriteTimer = setTimeout(flushMessageToDb, 200);
     };
 
     const updateVariant = (
@@ -313,7 +320,6 @@ export const useChatStore = create<ChatState>((set, get) => {
           providerConfig,
           modelId,
           messages: buildChatContext(contextMessages),
-          newMessage: { content: '', attachments: [] },
           systemPrompt,
           temperature,
           effort: get().activeEffort,
@@ -384,6 +390,12 @@ export const useChatStore = create<ChatState>((set, get) => {
         set({ isGenerating: false, abortController: null, generationId: null });
       }
       try {
+        // Flush any pending debounced DB write before updating chat metadata.
+        if (dbWriteTimer) {
+          clearTimeout(dbWriteTimer);
+          dbWriteTimer = null;
+        }
+        await flushMessageToDb();
         await db.chats.update(chatId, { updatedAt: Date.now() });
         await get().loadChats();
       } catch (e) {
@@ -1160,15 +1172,18 @@ export const useChatStore = create<ChatState>((set, get) => {
     const q = query.trim().toLowerCase();
     if (!q) return [];
 
-    const allMessages = await db.messages.toArray();
+    // Load chat titles up-front (small table, always needed for results).
     const chatTitles: Record<string, string> = {};
     (await db.chats.toArray()).forEach((c) => { chatTitles[c.id] = c.title; });
 
     const results: SearchResult[] = [];
-    for (const m of allMessages) {
+    // Use a cursor via .each() to avoid materialising the entire messages table
+    // into memory at once. Early-exit once the 100-result cap is reached.
+    await db.messages.each((m) => {
+      if (results.length >= 100) return;
       const content = m.content || '';
       const idx = content.toLowerCase().indexOf(q);
-      if (idx === -1) continue;
+      if (idx === -1) return;
 
       const start = Math.max(0, idx - 40);
       const end = Math.min(content.length, idx + q.length + 60);
@@ -1182,10 +1197,10 @@ export const useChatStore = create<ChatState>((set, get) => {
         snippet,
         timestamp: m.timestamp,
       });
-    }
+    });
 
     results.sort((a, b) => b.timestamp - a.timestamp);
-    return results.slice(0, 100);
+    return results;
   },
 
   // ---- Prompt presets ----
