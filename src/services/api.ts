@@ -136,6 +136,15 @@ function prepareContext(params: StreamParams, format: 'openai' | 'claude' | 'gem
   });
 }
 
+function supportsOpenAiWebSearchModel(modelId: string) {
+  return modelId.toLowerCase().includes('search');
+}
+
+function supportsOpenAiReasoning(modelId: string) {
+  const lower = modelId.toLowerCase();
+  return lower.startsWith('o') || lower.includes('gpt-5') || lower.includes('reason');
+}
+
 /**
  * Entrypoint for streaming AI response.
  */
@@ -284,21 +293,24 @@ export async function streamChatCompletion(
       stream_options: { include_usage: true },
     };
 
-    if (params.effort && params.effort !== 'none') {
+    if (params.effort && params.effort !== 'none' && (providerConfig.id === 'openrouter' || supportsOpenAiReasoning(modelId))) {
       const effVal = params.effort.toLowerCase();
-      body.reasoning_effort = effVal;
-      body.reasoning = {
-        effort: effVal
-      };
+      if (providerConfig.id === 'openai') {
+        body.reasoning_effort = effVal;
+      } else {
+        body.reasoning = {
+          effort: effVal
+        };
+      }
     }
 
     // Built-in web search. OpenAI uses `web_search_options`; OpenRouter-style
     // gateways accept a `web` plugin. Send both so compatible endpoints pick up
     // whichever they support.
     if (params.webSearch) {
-      if (providerConfig.id === 'openai') {
+      if (providerConfig.id === 'openai' && supportsOpenAiWebSearchModel(modelId)) {
         body.web_search_options = {};
-      } else {
+      } else if (providerConfig.id === 'openrouter') {
         body.plugins = [{ id: 'web' }];
       }
     }

@@ -4,6 +4,7 @@ export interface Chat {
   id: string;
   title: string;
   systemPrompt?: string;
+  providerId?: string;
   modelId: string;
   temperature: number;
   createdAt: number;
@@ -34,6 +35,7 @@ export interface MessageVariant {
   id: string;
   content: string;
   thinking?: string;
+  modelProviderId?: string;
   modelUsed?: string;
   timestamp: number;
   citations?: Citation[];
@@ -46,6 +48,7 @@ export interface Message {
   role: 'user' | 'assistant' | 'system';
   content: string;
   attachments?: Attachment[];
+  modelProviderId?: string;
   modelUsed?: string;
   timestamp: number;
   variants?: MessageVariant[];
@@ -81,19 +84,25 @@ export interface ProviderConfig {
   corsProxy: string;
 }
 
-class MinaseDatabase extends Dexie {
+class HimawariDatabase extends Dexie {
   chats!: Table<Chat, string>;
   messages!: Table<Message, string>;
   settings!: Table<Setting, string>;
 
   constructor() {
+    // Keep the historical IndexedDB name so existing local data remains readable.
     super('MinaseDatabase');
     this.version(1).stores({
       chats: 'id, title, modelId, createdAt, updatedAt',
       messages: 'id, chatId, role, timestamp',
       settings: 'key',
     });
+    this.version(2).stores({
+      chats: 'id, title, providerId, modelId, createdAt, updatedAt',
+      messages: 'id, chatId, role, timestamp',
+      settings: 'key',
+    });
   }
 }
 
-export const db = new MinaseDatabase();
+export const db = new HimawariDatabase();

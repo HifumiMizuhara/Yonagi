@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useChatStore, type SearchResult } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import { Search, X, User, MessageSquare } from 'lucide-react';
 
 interface SearchModalProps {
@@ -14,6 +15,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogAccessibility(dialogRef, onClose);
 
   useEffect(() => {
     inputRef.current?.focus();
@@ -33,8 +36,9 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
     return () => clearTimeout(handle);
   }, [query, store]);
 
-  const handleSelect = async (chatId: string) => {
+  const handleSelect = async (chatId: string, messageId: string) => {
     await store.selectChat(chatId);
+    store.setScrollTargetMessageId(messageId);
     onClose();
   };
 
@@ -60,9 +64,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
       onClick={onClose}
     >
       <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="search-dialog-title"
+        tabIndex={-1}
         className="relative flex flex-col w-full max-w-2xl max-h-[70vh] bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans backdrop-blur-2xl"
         onClick={(e) => e.stopPropagation()}
       >
+        <h2 id="search-dialog-title" className="sr-only">{t.search}</h2>
         {/* Search input */}
         <div className="flex items-center px-5 py-4 border-b border-border-light dark:border-border-dark shrink-0">
           <Search className="w-5 h-5 text-gray-400 shrink-0" />
@@ -71,12 +81,13 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
             type="text"
             value={query}
             onChange={(e) => setQuery(e.target.value)}
-            onKeyDown={(e) => e.key === 'Escape' && onClose()}
             placeholder={t.searchPlaceholder}
+            aria-label={t.searchPlaceholder}
             className="flex-1 mx-3 bg-transparent focus:outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
           />
           <button
             onClick={onClose}
+            aria-label={t.close}
             className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer transition-colors shrink-0"
           >
             <X className="w-4.5 h-4.5" />
@@ -87,8 +98,8 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
         <div className="flex-1 overflow-y-auto p-2">
           {!query.trim() ? (
             <div className="flex flex-col items-center justify-center py-16 text-center text-xs text-gray-400 dark:text-gray-500 space-y-2 select-none">
-              <Search className="w-8 h-8 stroke-[1.2] text-amber-500/40" />
-              <p>{t.searchHint}</p>
+	              <Search className="w-8 h-8 stroke-[1.2] text-amber-500/40" />
+	              <p>{t.searchHint}</p>
             </div>
           ) : loading ? (
             <div className="py-16 text-center text-xs text-gray-400 select-none">…</div>
@@ -101,7 +112,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
               {displayResults.map((r) => (
                 <button
                   key={r.messageId}
-                  onClick={() => handleSelect(r.chatId)}
+                  onClick={() => handleSelect(r.chatId, r.messageId)}
                   className="w-full text-left px-3.5 py-3 rounded-xl hover:bg-amber-500/5 dark:hover:bg-amber-500/10 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center space-x-2 text-[10px] font-bold text-gray-400 dark:text-gray-500 mb-1 uppercase tracking-wide">

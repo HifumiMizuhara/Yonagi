@@ -115,6 +115,12 @@ export const ChatArea: React.FC = () => {
   const [thinkingOpen, setThinkingOpen] = useState<Record<string, boolean>>({});
   const [editingMessageId, setEditingMessageId] = useState<string | null>(null);
   const [editingText, setEditingText] = useState('');
+  const [highlightedMessageId, setHighlightedMessageId] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    confirmLabel?: string;
+    onConfirm: () => void | Promise<void>;
+  } | null>(null);
   
   // Model search state
   const [modelSearchQuery, setModelSearchQuery] = useState('');
@@ -157,6 +163,20 @@ export const ChatArea: React.FC = () => {
       container.scrollTop = container.scrollHeight;
     }
   }, [store.messages]);
+
+  useEffect(() => {
+    if (!store.scrollTargetMessageId) return;
+    const target = document.getElementById(`message-${store.scrollTargetMessageId}`);
+    const container = messagesContainerRef.current;
+    if (!target || !container) return;
+
+    const prefersReducedMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+    target.scrollIntoView({ block: 'center', behavior: prefersReducedMotion ? 'auto' : 'smooth' });
+    setHighlightedMessageId(store.scrollTargetMessageId);
+    const timeout = window.setTimeout(() => setHighlightedMessageId(null), 1800);
+    store.setScrollTargetMessageId(null);
+    return () => window.clearTimeout(timeout);
+  }, [store, store.messages, store.scrollTargetMessageId]);
 
   // Handle outside click for model and effort dropdowns
   useEffect(() => {
@@ -201,13 +221,14 @@ export const ChatArea: React.FC = () => {
 
   // List all available models dynamically from all enabled providers
   const getAvailableModels = () => {
-    const models: Array<{ id: string; name: string; group: string }> = [];
+    const models: Array<{ id: string; providerId: string; name: string; group: string }> = [];
     
     Object.values(store.providers).forEach((prov) => {
       if (prov.enabled) {
         prov.models.forEach((mId) => {
           models.push({
             id: mId,
+            providerId: prov.id,
             name: mId,
             group: prov.name,
           });
@@ -228,8 +249,10 @@ export const ChatArea: React.FC = () => {
 
   const filteredModels = getFilteredModels();
 
-  const activeModel = allModels.find(m => m.id === store.activeModelId) || {
+  const activeModel = allModels.find(m => m.id === store.activeModelId && m.providerId === store.activeProviderId) ||
+    allModels.find(m => m.id === store.activeModelId) || {
     id: store.activeModelId,
+    providerId: store.activeProviderId,
     name: store.activeModelId,
     group: 'Unknown',
   };
@@ -257,21 +280,19 @@ export const ChatArea: React.FC = () => {
   // but whether to even offer the toggle is best judged by model name too,
   // so custom/OpenRouter proxies (named anything) still surface it.
   const supportsWebSearch = (() => {
-    const hay = `${activeModel.group} ${activeModel.id}`.toLowerCase();
-    return (
-      hay.includes('gemini') || hay.includes('google') ||
-      hay.includes('claude') || hay.includes('anthropic') ||
-      hay.includes('sonnet') || hay.includes('opus') || hay.includes('haiku') ||
-      hay.includes('openai') || hay.includes('chatgpt') || hay.includes('gpt-') ||
-      hay.includes('openrouter') || hay.includes('perplexity') || hay.includes('sonar') ||
-      hay.includes('grok')
-    );
+    const modelId = activeModel.id.toLowerCase();
+    if (activeModel.providerId === 'gemini' || activeModel.providerId === 'claude' || activeModel.providerId === 'openrouter') {
+      return true;
+    }
+    if (activeModel.providerId === 'openai') {
+      return modelId.includes('search');
+    }
+    return modelId.includes('sonar') || modelId.includes('perplexity');
   })();
 
   const getEffortOptions = () => {
-    const grp = activeModel.group.toLowerCase();
     let baseOptions: { value: string; label: string }[];
-    if (grp.includes('gemini') || grp.includes('google')) {
+    if (activeModel.providerId === 'gemini') {
       baseOptions = [
         { value: 'minimal', label: 'Minimal' },
         { value: 'low', label: 'Low' },
@@ -279,7 +300,7 @@ export const ChatArea: React.FC = () => {
         { value: 'high', label: 'High' },
         { value: 'none', label: t.effortNone }
       ];
-    } else if (grp.includes('claude') || grp.includes('anthropic')) {
+    } else if (activeModel.providerId === 'claude') {
       baseOptions = [
         { value: 'low', label: 'Low' },
         { value: 'medium', label: 'Medium' },
@@ -288,7 +309,7 @@ export const ChatArea: React.FC = () => {
         { value: 'max', label: 'Max' },
         { value: 'none', label: t.effortNone }
       ];
-    } else {
+    } else if (activeModel.providerId === 'openai' || activeModel.providerId === 'openrouter') {
       baseOptions = [
         { value: 'minimal', label: 'Minimal' },
         { value: 'low', label: 'Low' },
@@ -297,15 +318,19 @@ export const ChatArea: React.FC = () => {
         { value: 'xhigh', label: 'xHigh' },
         { value: 'none', label: t.effortNone }
       ];
+    } else {
+      baseOptions = [
+        { value: 'none', label: t.effortNone }
+      ];
     }
     return [...baseOptions, { value: 'custom_input', label: t.effortCustom }];
   };
 
-  const handleModelSelect = async (modelId: string) => {
-    await store.setActiveModelId(modelId);  // Fix #8: await the async setter
+  const handleModelSelect = async (providerId: string, modelId: string) => {
+    await store.setActiveModelId(modelId, providerId);
     
     if (store.activeChatId) {
-      await db.chats.update(store.activeChatId, { modelId });
+      await db.chats.update(store.activeChatId, { providerId, modelId });
       await store.loadChats();
     }
 
@@ -432,15 +457,24 @@ export const ChatArea: React.FC = () => {
     setEditingText('');
   };
 
-  const handleSaveEdit = async (messageId: string, messageIndex: number) => {
-    if (!editingText.trim() || store.isGenerating) return;
-    if (messageIndex < store.messages.length - 1 && !window.confirm(t.editMessageConfirm)) {
-      return;
-    }
-
+  const saveEditedMessage = async (messageId: string) => {
     const nextContent = editingText;
     handleCancelEdit();
     await store.editUserMessage(messageId, nextContent);
+  };
+
+  const handleSaveEdit = async (messageId: string, messageIndex: number) => {
+    if (!editingText.trim() || store.isGenerating) return;
+    if (messageIndex < store.messages.length - 1) {
+      setConfirmDialog({
+        message: t.editMessageConfirm,
+        confirmLabel: t.saveAndRegenerate,
+        onConfirm: () => saveEditedMessage(messageId),
+      });
+      return;
+    }
+
+    await saveEditedMessage(messageId);
   };
 
   const handleSend = async () => {
@@ -458,6 +492,7 @@ export const ChatArea: React.FC = () => {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
+    if (e.nativeEvent.isComposing) return;
     if (e.key === 'Enter' && !e.shiftKey) {
       e.preventDefault();
       handleSend();
@@ -495,6 +530,7 @@ export const ChatArea: React.FC = () => {
                 setShowModelDropdown(!showModelDropdown);
                 setModelSearchQuery('');
               }}
+              aria-label={t.searchModels}
               className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
             >
               <span className={`w-2 h-2 rounded-full shadow-sm animate-pulse shrink-0 ${getProviderColor(activeModel.group)}`} />
@@ -539,14 +575,14 @@ export const ChatArea: React.FC = () => {
                       <div className="mt-1 space-y-0.5">
                         {groupModels.map((model) => (
                           <button
-                            key={model.id}
-                            onClick={() => handleModelSelect(model.id)}
+                            key={`${model.providerId}:${model.id}`}
+                            onClick={() => handleModelSelect(model.providerId, model.id)}
                             className={`w-full text-left px-3.5 py-2.5 rounded-lg text-xs hover:bg-amber-500/5 dark:hover:bg-amber-500/10 hover:text-amber-600 dark:hover:text-amber-400 flex items-center justify-between transition-colors cursor-pointer ${
-                              store.activeModelId === model.id ? 'text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/5 dark:bg-amber-500/10' : 'text-gray-700 dark:text-gray-300'
+                              store.activeModelId === model.id && store.activeProviderId === model.providerId ? 'text-amber-600 dark:text-amber-400 font-semibold bg-amber-500/5 dark:bg-amber-500/10' : 'text-gray-700 dark:text-gray-300'
                             }`}
                           >
                             <span className="truncate pr-4 font-medium">{model.name}</span>
-                            {store.activeModelId === model.id && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
+                            {store.activeModelId === model.id && store.activeProviderId === model.providerId && <Check className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />}
                           </button>
                         ))}
                       </div>
@@ -564,6 +600,7 @@ export const ChatArea: React.FC = () => {
                 setCustomEffortVisible(false);
                 setCustomEffortValue('');
               }}
+              aria-label={t.effortLabel}
               className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
             >
               <span className="font-heading whitespace-nowrap">
@@ -643,6 +680,7 @@ export const ChatArea: React.FC = () => {
             <button
               onClick={() => store.setActiveWebSearch(!store.activeWebSearch)}
               title={t.webSearchTooltip}
+              aria-label={t.webSearchLabel}
               className={`flex items-center space-x-2 px-3 sm:px-3.5 py-2 border rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer shrink-0 ${
                 store.activeWebSearch
                   ? 'bg-amber-500/10 border-amber-500/50 text-amber-600 dark:text-amber-400'
@@ -658,8 +696,9 @@ export const ChatArea: React.FC = () => {
           {store.promptPresets.length > 0 && (
             <div className="relative shrink-0" ref={promptDropdownRef}>
               <button
-                onClick={() => setShowPromptDropdown(!showPromptDropdown)}
-                title={t.promptPresets}
+	                onClick={() => setShowPromptDropdown(!showPromptDropdown)}
+	                title={t.promptPresets}
+	                aria-label={t.promptPresets}
                 className="flex items-center space-x-2 px-3.5 py-2 hover:bg-card-light dark:hover:bg-card-dark text-gray-800 dark:text-gray-200 border border-border-light/60 dark:border-border-dark/40 rounded-xl text-xs sm:text-sm font-semibold transition-all shadow-sm active:scale-[0.98] cursor-pointer"
               >
                 <FileText className="w-4 h-4 text-gray-400" />
@@ -761,7 +800,13 @@ export const ChatArea: React.FC = () => {
               const isCompareMode = !isUser && (compareStates[msg.id] || false);
 
               return (
-                <div key={msg.id} className={`flex space-x-4 ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up group`}>
+	                <div
+                    key={msg.id}
+                    id={`message-${msg.id}`}
+                    className={`flex space-x-4 ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up group rounded-3xl transition-shadow duration-300 ${
+                      highlightedMessageId === msg.id ? 'ring-2 ring-amber-500/40 ring-offset-4 ring-offset-bg-light dark:ring-offset-bg-dark' : ''
+                    }`}
+                  >
                   
                   {/* Left Avatar (Assistant only) */}
                   {!isUser && (
@@ -782,16 +827,18 @@ export const ChatArea: React.FC = () => {
                         {hasVariants && (
                           <div className="flex items-center space-x-1 bg-card-light dark:bg-card-dark border border-border-light/50 dark:border-border-dark/50 rounded-lg px-1.5 py-0.5 ml-2 font-mono text-[9px] shadow-sm">
                             <button
-                              disabled={activeIndex === 0}
-                              onClick={() => store.switchMessageVariant(msg.id, activeIndex - 1)}
+	                              disabled={activeIndex === 0}
+	                              onClick={() => store.switchMessageVariant(msg.id, activeIndex - 1)}
+	                              aria-label={t.previousVariant}
                               className={`p-0.5 rounded hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed`}
                             >
                               <ChevronLeft className="w-3 h-3" />
                             </button>
                             <span>{activeIndex + 1} / {totalVariants}</span>
                             <button
-                              disabled={activeIndex === totalVariants - 1}
-                              onClick={() => store.switchMessageVariant(msg.id, activeIndex + 1)}
+	                              disabled={activeIndex === totalVariants - 1}
+	                              onClick={() => store.switchMessageVariant(msg.id, activeIndex + 1)}
+	                              aria-label={t.nextVariant}
                               className={`p-0.5 rounded hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed`}
                             >
                               <ChevronRight className="w-3 h-3" />
@@ -803,7 +850,8 @@ export const ChatArea: React.FC = () => {
                       {/* Side-by-Side Compare Toggle */}
                       {!isUser && msg.variants && msg.variants.length > 1 && (
                         <button
-                          onClick={() => setCompareStates({ ...compareStates, [msg.id]: !isCompareMode })}
+	                          onClick={() => setCompareStates({ ...compareStates, [msg.id]: !isCompareMode })}
+	                          aria-label={isCompareMode ? t.normalView : t.compareView}
                           className={`flex items-center space-x-1 px-2 py-0.5 rounded-lg border transition-all cursor-pointer text-[9px] ${
                             isCompareMode
                               ? 'bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-500/30'
@@ -846,7 +894,8 @@ export const ChatArea: React.FC = () => {
                                 <span>#{vIdx + 1}</span>
                                 {activeIndex !== vIdx && (
                                   <button
-                                    onClick={() => store.switchMessageVariant(msg.id, vIdx)}
+	                                    onClick={() => store.switchMessageVariant(msg.id, vIdx)}
+	                                    aria-label={t.setActive}
                                     className="px-1.5 py-0.5 bg-amber-500/10 hover:bg-amber-500/20 text-amber-600 dark:text-amber-400 rounded cursor-pointer transition-colors text-[8px]"
                                   >
                                     {t.setActive}
@@ -1091,10 +1140,11 @@ export const ChatArea: React.FC = () => {
                         {/* Compare with another model button */}
                         <div className="relative">
                           <button
-                            onClick={() => {
-                              setCompareSearchQuery('');
-                              setCompareDropdownOpen(compareDropdownOpen === msg.id ? null : msg.id);
-                            }}
+	                            onClick={() => {
+	                              setCompareSearchQuery('');
+	                              setCompareDropdownOpen(compareDropdownOpen === msg.id ? null : msg.id);
+	                            }}
+	                            aria-label={t.compare}
                             className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
                             title={t.compare}
                           >
@@ -1125,9 +1175,9 @@ export const ChatArea: React.FC = () => {
                               </div>
                               {allModels.filter((m) => m.name.toLowerCase().includes(compareSearchQuery.toLowerCase())).map((m) => (
                                 <button
-                                  key={m.id}
+                                  key={`${m.providerId}:${m.id}`}
                                   onClick={() => {
-                                    store.regenerateResponse(index, m.id);
+                                    store.regenerateResponse(index, m.id, m.providerId);
                                     setCompareDropdownOpen(null);
                                     // Automatically enable compare mode to see side-by-side
                                     setCompareStates({ ...compareStates, [msg.id]: true });
@@ -1136,6 +1186,7 @@ export const ChatArea: React.FC = () => {
                                   title={m.name}
                                 >
                                   {m.name}
+                                  <span className="ml-1 text-gray-400">({m.group})</span>
                                 </button>
                               ))}
                             </div>
@@ -1144,11 +1195,11 @@ export const ChatArea: React.FC = () => {
 
                         {/* Create branch from this message */}
                         <button
-                          onClick={() => {
-                            if (confirm(t.branchCreateConfirm)) {
-                              store.createBranch(index);
-                            }
-                          }}
+                          onClick={() => setConfirmDialog({
+                            message: t.branchCreateConfirm,
+                            confirmLabel: t.branchCreate,
+                            onConfirm: () => store.createBranch(index),
+                          })}
                           className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[10px] font-bold text-gray-400 dark:text-gray-500 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
                           title={t.branchCreate}
                         >
@@ -1200,8 +1251,9 @@ export const ChatArea: React.FC = () => {
                   )}
                   <span className="max-w-[130px] truncate text-[11px] font-medium text-gray-700 dark:text-gray-300">{att.name}</span>
                   <button
-                    onClick={() => removeAttachment(idx)}
-                    className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 cursor-pointer transition-colors"
+	                    onClick={() => removeAttachment(idx)}
+	                    aria-label={`${t.delete}: ${att.name}`}
+	                    className="p-1 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 cursor-pointer transition-colors"
                   >
                     <X className="w-3 h-3" />
                   </button>
@@ -1214,7 +1266,7 @@ export const ChatArea: React.FC = () => {
           {fileUploadError && (
             <div className="flex items-start justify-between gap-2 px-4 py-2 bg-red-50 dark:bg-red-950/30 border-b border-red-200 dark:border-red-800 text-[11px] text-red-600 dark:text-red-400 rounded-t-2xl">
               <pre className="whitespace-pre-wrap font-sans">{fileUploadError}</pre>
-              <button onClick={() => setFileUploadError(null)} className="shrink-0 mt-0.5">
+	              <button onClick={() => setFileUploadError(null)} aria-label={t.close} className="shrink-0 mt-0.5">
                 <X className="w-3.5 h-3.5" />
               </button>
             </div>
@@ -1225,6 +1277,7 @@ export const ChatArea: React.FC = () => {
             <button
               onClick={() => fileInputRef.current?.click()}
               disabled={isUploading}
+              aria-label={t.attachFile}
               className="p-2 text-gray-450 hover:text-amber-600 dark:hover:text-amber-500 rounded-xl hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer shrink-0"
               title="ファイルを添付する (PDF, 画像, テキスト)"
             >
@@ -1253,6 +1306,7 @@ export const ChatArea: React.FC = () => {
             {store.isGenerating ? (
               <button
                 onClick={store.stopGeneration}
+                aria-label={t.stop}
                 className="p-2.5 bg-red-600 hover:bg-red-700 text-white rounded-xl shadow-lg shadow-red-500/20 hover:shadow-red-500/30 transition-colors cursor-pointer shrink-0 active:scale-95 duration-150"
                 title={t.stop}
               >
@@ -1262,6 +1316,7 @@ export const ChatArea: React.FC = () => {
               <button
                 onClick={handleSend}
                 disabled={!inputText.trim() && attachments.length === 0}
+                aria-label={t.send}
                 className={`p-2.5 rounded-xl transition-all shrink-0 active:scale-95 duration-150 ${
                   inputText.trim() || attachments.length > 0
                     ? 'bg-amber-600 text-white cursor-pointer hover:bg-amber-700 shadow-lg shadow-amber-500/20 hover:shadow-amber-500/35'
@@ -1285,6 +1340,34 @@ export const ChatArea: React.FC = () => {
           {t.disclaimer}
         </p>
       </div>
+
+      {confirmDialog && (
+        <div className="absolute inset-0 z-[80] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div role="alertdialog" aria-modal="true" className="w-full max-w-sm rounded-2xl border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark p-5 shadow-2xl">
+            <p className="text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-100">{confirmDialog.message}</p>
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setConfirmDialog(null)}
+                className="px-3.5 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+              >
+                {t.cancel}
+              </button>
+              <button
+                type="button"
+                onClick={async () => {
+                  const next = confirmDialog;
+                  setConfirmDialog(null);
+                  await next.onConfirm();
+                }}
+                className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white cursor-pointer transition-colors"
+              >
+                {confirmDialog.confirmLabel || t.ok}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
     </div>
   );

@@ -7,11 +7,16 @@ import { UnlockModal } from './components/UnlockModal';
 import { useChatStore } from './store/useChatStore';
 
 const App: React.FC = () => {
-  const store = useChatStore();
+  const init = useChatStore((state) => state.init);
+  const settingsOpen = useChatStore((state) => state.settingsOpen);
+  const searchOpen = useChatStore((state) => state.searchOpen);
+  const keysLocked = useChatStore((state) => state.keysLocked);
+  const setSettingsOpen = useChatStore((state) => state.setSettingsOpen);
+  const setSearchOpen = useChatStore((state) => state.setSearchOpen);
 
   useEffect(() => {
-    store.init();
-  }, [store]);
+    void init();
+  }, [init]);
 
   return (
     <div className="flex h-screen w-screen overflow-hidden bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100 font-sans antialiased">
@@ -22,17 +27,17 @@ const App: React.FC = () => {
       <ChatArea />
 
       {/* Settings Modal Overlay */}
-      {store.settingsOpen && (
-        <SettingsModal onClose={() => store.setSettingsOpen(false)} />
+      {settingsOpen && (
+        <SettingsModal onClose={() => setSettingsOpen(false)} />
       )}
 
       {/* Global message search */}
-      {store.searchOpen && (
-        <SearchModal onClose={() => store.setSearchOpen(false)} />
+      {searchOpen && (
+        <SearchModal onClose={() => setSearchOpen(false)} />
       )}
 
       {/* API key unlock prompt on startup */}
-      {store.keysLocked && <UnlockModal />}
+      {keysLocked && <UnlockModal />}
     </div>
   );
 };

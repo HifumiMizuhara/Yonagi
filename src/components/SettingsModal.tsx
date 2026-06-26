@@ -1,6 +1,7 @@
-import React, { useState } from 'react';
+import React, { useRef, useState } from 'react';
 import { useChatStore } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import { db } from '../services/db';
 import {
   X, Shield, Settings, Database, Eye, EyeOff, Check, AlertCircle, Search,
@@ -33,7 +34,15 @@ const PROVIDER_KEY_LINKS: Record<string, string> = {
 export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const store = useChatStore();
   const { t, language } = useTranslation();
+  const dialogRef = useRef<HTMLDivElement>(null);
+  useDialogAccessibility(dialogRef, onClose);
   const [activeTab, setActiveTab] = useState<'connections' | 'prompt' | 'pricing' | 'security' | 'data'>('connections');
+  const [notice, setNotice] = useState<string | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<{
+    message: string;
+    onConfirm: () => void | Promise<void>;
+    onCancel?: () => void;
+  } | null>(null);
 
   // Prompt preset form state
   const [newPresetName, setNewPresetName] = useState('');
@@ -99,6 +108,29 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [newModelId, setNewModelId] = useState('');
 
   const activeProvider = store.providers[selectedProviderId] || store.providers.gemini;
+  const apiKeyInputId = `api-key-${selectedProviderId}`;
+  const apiHostInputId = `api-host-${selectedProviderId}`;
+  const corsProxyInputId = `cors-proxy-${selectedProviderId}`;
+
+  const openConfirm = (
+    message: string,
+    onConfirm: () => void | Promise<void>,
+    onCancel?: () => void
+  ) => {
+    setConfirmDialog({ message, onConfirm, onCancel });
+  };
+
+  const closeConfirm = () => {
+    confirmDialog?.onCancel?.();
+    setConfirmDialog(null);
+  };
+
+  const acceptConfirm = async () => {
+    const next = confirmDialog;
+    if (!next) return;
+    setConfirmDialog(null);
+    await next.onConfirm();
+  };
 
   const handleProviderConfigChange = async (key: string, value: string | boolean | string[]) => {
     await store.updateProvider(selectedProviderId, { [key]: value });
@@ -159,12 +191,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   };
 
   const handleDeleteProvider = async (pId: string, name: string) => {
-    if (confirm(t.deleteProviderConfirm.replace('{name}', name))) {
+    openConfirm(t.deleteProviderConfirm.replace('{name}', name), async () => {
       await store.deleteProvider(pId);
       if (selectedProviderId === pId) {
         setSelectedProviderId('gemini');
       }
-    }
+    });
   };
 
   // Group models helper
@@ -213,32 +245,28 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     try {
       const chats = await db.chats.toArray();
       const messages = await db.messages.toArray();
-      const exportObj = { version: '1.0.0', exporter: 'Minase AI Chat', chats, messages };
+      const exportObj = { version: '1.0.0', exporter: 'Himawari AI Chat', chats, messages };
       const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `minase-chats-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `himawari-chats-export-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
     } catch {
-      alert(t.fileLoadError);
+      setNotice(t.fileLoadError);
     }
   };
 
   const handleImportData = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.currentTarget;
+    const file = input.files?.[0];
     if (!file) return;
 
-    // Fix #7: warn user that import will overwrite existing chats with matching IDs
-    if (!confirm('インポートを実行すると、同じIDの既存のチャット履歴が上書きされます。続行しますか？')) {
-      e.target.value = '';
-      return;
-    }
-
-    try {
+    const runImport = async () => {
+      try {
       const reader = new FileReader();
       reader.onload = async (evt) => {
         try {
@@ -246,7 +274,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
           // Fix #7: validate shape before touching the database
           if (!importObj.chats || !Array.isArray(importObj.chats) ||
               !importObj.messages || !Array.isArray(importObj.messages)) {
-            alert(t.fileLoadError);
+            setNotice(t.fileLoadError);
             return;
           }
           await db.transaction('rw', [db.chats, db.messages], async () => {
@@ -254,35 +282,53 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             for (const message of importObj.messages) await db.messages.put(message);
           });
           await store.loadChats();
-          alert(t.copied);
+          setNotice(t.copied);
         } catch {
-          alert(t.fileLoadError);
+          setNotice(t.fileLoadError);
         }
       };
       reader.readAsText(file);
     } catch {
-      alert(t.fileLoadError);
+      setNotice(t.fileLoadError);
     }
+    };
+
+    openConfirm(
+      t.importOverwriteConfirm,
+      runImport,
+      () => { input.value = ''; }
+    );
   };
 
   const handleClearAll = async () => {
-    if (confirm(t.clearAllConfirm)) {
+    openConfirm(t.clearAllConfirm, async () => {
       await store.clearAllChats();
-      alert(t.clearAllSuccess);
-    }
+      setNotice(t.clearAllSuccess);
+    });
   };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fade-in">
-      <div className="relative flex flex-col w-full max-w-4xl h-[90vh] md:h-[650px] bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans backdrop-blur-2xl">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="settings-dialog-title"
+        tabIndex={-1}
+        className="relative flex flex-col w-full max-w-4xl h-[90vh] md:h-[650px] bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans backdrop-blur-2xl"
+      >
         
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4.5 border-b border-border-light dark:border-border-dark bg-card-light/30 dark:bg-sidebar-dark/20 shrink-0 select-none">
           <div className="flex items-center space-x-2.5 text-gray-900 dark:text-gray-50 font-bold text-md font-heading">
             <Settings className="w-5 h-5 text-amber-600 dark:text-amber-500" />
-            <span>{t.settings}</span>
+            <span id="settings-dialog-title">{t.settings}</span>
           </div>
-          <button onClick={onClose} className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer transition-colors">
+          <button
+            onClick={onClose}
+            aria-label={t.close}
+            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer transition-colors"
+          >
             <X className="w-5 h-5" />
           </button>
         </div>
@@ -404,12 +450,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
                           {/* Delete custom provider option */}
                           {isCustom && (
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteProvider(p.id, p.name);
-                              }}
-                              className="hover-action p-1 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-all z-10"
+	                            <button
+	                              onClick={(e) => {
+	                                e.stopPropagation();
+	                                handleDeleteProvider(p.id, p.name);
+	                              }}
+	                              aria-label={`${t.delete}: ${p.name}`}
+	                              className="hover-action p-1 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-all z-10"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -425,15 +472,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                       <form onSubmit={handleCreateCustomProvider} className="space-y-2 animate-scale-up">
                         <input
                           type="text"
-                          required
-                          placeholder={t.customProviderPlaceholder}
+	                          required
+	                          aria-label={t.customProviderPlaceholder}
+	                          placeholder={t.customProviderPlaceholder}
                           value={newCustomName}
                           onChange={(e) => setNewCustomName(e.target.value)}
                           className="w-full px-3 py-1.5 bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl text-xs focus:outline-none"
                         />
                         <input
-                          type="text"
-                          placeholder={t.customUrlPlaceholder}
+	                          type="text"
+	                          aria-label={t.customUrlPlaceholder}
+	                          placeholder={t.customUrlPlaceholder}
                           value={newCustomUrl}
                           onChange={(e) => setNewCustomUrl(e.target.value)}
                           className="w-full px-3 py-1.5 bg-card-light dark:bg-sidebar-dark border border-border-light dark:border-border-dark rounded-xl text-xs focus:outline-none"
@@ -491,9 +540,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     {/* On/Off Switch */}
                     <div className="flex items-center space-x-2">
                       <span className="text-xs text-gray-400 font-medium">{activeProvider.enabled ? t.activeStatus : t.inactiveStatus}</span>
-                      <button
-                        onClick={() => handleProviderConfigChange('enabled', !activeProvider.enabled)}
-                        className={`w-11 h-6 rounded-full flex items-center p-0.5 cursor-pointer transition-colors duration-200 ${
+	                      <button
+	                        onClick={() => handleProviderConfigChange('enabled', !activeProvider.enabled)}
+	                        aria-label={activeProvider.enabled ? t.inactiveStatus : t.activeStatus}
+	                        className={`w-11 h-6 rounded-full flex items-center p-0.5 cursor-pointer transition-colors duration-200 ${
                           activeProvider.enabled ? 'bg-emerald-500 shadow-sm shadow-emerald-500/30' : 'bg-gray-200 dark:bg-card-dark'
                         }`}
                       >
@@ -510,7 +560,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   {selectedProviderId !== 'ollama' && (
                     <div className="space-y-2">
                       <div className="flex items-center justify-between select-none">
-                        <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">{t.apiKey}</label>
+                        <label htmlFor={apiKeyInputId} className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide">{t.apiKey}</label>
                         
                         {/* Get Key Link */}
                         {PROVIDER_KEY_LINKS[selectedProviderId] && (
@@ -529,6 +579,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         <div className="relative flex-1">
                           <input
                             type={showKey ? 'text' : 'password'}
+                            id={apiKeyInputId}
                             value={activeProvider.apiKey}
                             onChange={(e) => handleProviderConfigChange('apiKey', e.target.value)}
                             placeholder="********************************"
@@ -537,6 +588,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           <button
                             type="button"
                             onClick={() => setShowKey(!showKey)}
+                            aria-label={showKey ? t.hideApiKey : t.showApiKey}
                             className="absolute right-3.5 top-3.5 text-gray-400 hover:text-gray-600 dark:hover:text-gray-250 cursor-pointer"
                           >
                             {showKey ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
@@ -576,10 +628,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
                   {/* API Host Box */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide select-none">{t.apiHost}</label>
+                    <label htmlFor={apiHostInputId} className="block text-xs font-bold text-gray-700 dark:text-gray-300 uppercase tracking-wide select-none">{t.apiHost}</label>
                     <div className="flex space-x-2">
                       <input
                         type="text"
+                        id={apiHostInputId}
                         value={activeProvider.baseUrl}
                         onChange={(e) => handleProviderConfigChange('baseUrl', e.target.value)}
                         placeholder="http://localhost:port"
@@ -612,12 +665,13 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
                   {/* CORS Proxy Override field */}
                   <div className="space-y-2">
-                    <label className="block text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center uppercase tracking-wide select-none">
+                    <label htmlFor={corsProxyInputId} className="block text-xs font-bold text-gray-700 dark:text-gray-300 flex items-center uppercase tracking-wide select-none">
                       <span>{t.corsProxy}</span>
                       <span className="ml-1.5 text-[10px] text-gray-400 font-normal normal-case">{t.corsProxySubtext}</span>
                     </label>
                     <input
                       type="text"
+                      id={corsProxyInputId}
                       value={activeProvider.corsProxy}
                       onChange={(e) => handleProviderConfigChange('corsProxy', e.target.value)}
                       placeholder="例: https://cors-anywhere.herokuapp.com/"
@@ -639,10 +693,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
                       <div className="flex space-x-2 shrink-0">
                         {/* Add custom model toggle button */}
-                        <button
-                          type="button"
-                          onClick={() => setIsAddingModel(!isAddingModel)}
-                          className="p-1.5 border border-border-light dark:border-border-dark hover:bg-card-light dark:hover:bg-card-dark rounded-lg text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 transition-colors cursor-pointer"
+	                        <button
+	                          type="button"
+	                          onClick={() => setIsAddingModel(!isAddingModel)}
+	                          aria-label={t.addModelPlaceholder}
+	                          className="p-1.5 border border-border-light dark:border-border-dark hover:bg-card-light dark:hover:bg-card-dark rounded-lg text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 transition-colors cursor-pointer"
                           title="手動でモデルを追加"
                         >
                           <Plus className="w-4 h-4" />
@@ -666,8 +721,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                       <form onSubmit={handleAddCustomModel} className="flex space-x-2 animate-scale-up bg-card-light/45 dark:bg-sidebar-dark/40 p-2.5 rounded-xl border border-border-light dark:border-border-dark">
                         <input
                           type="text"
-                          required
-                          placeholder={t.addModelPlaceholder}
+	                          required
+	                          aria-label={t.addModelPlaceholder}
+	                          placeholder={t.addModelPlaceholder}
                           value={newModelId}
                           onChange={(e) => setNewModelId(e.target.value)}
                           className="flex-1 px-3 py-1.5 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500"
@@ -721,9 +777,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                                   </div>
 
                                   {/* Delete model from provider list */}
-                                  <button
-                                    onClick={() => store.removeModelFromProvider(selectedProviderId, mId)}
-                                    className="hover-action p-1 hover:text-red-500 text-gray-400 dark:text-gray-500 rounded-md cursor-pointer transition-all"
+	                                  <button
+	                                    onClick={() => store.removeModelFromProvider(selectedProviderId, mId)}
+	                                    aria-label={`${t.delete}: ${mId}`}
+	                                    className="hover-action p-1 hover:text-red-500 text-gray-400 dark:text-gray-500 rounded-md cursor-pointer transition-all"
                                     title="このモデルを削除"
                                   >
                                     <Trash2 className="w-3.5 h-3.5" />
@@ -819,9 +876,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                             >
                               {t.useThisPreset}
                             </button>
-                            <button
-                              onClick={() => store.deletePromptPreset(p.id)}
-                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+	                            <button
+	                              onClick={() => store.deletePromptPreset(p.id)}
+	                              aria-label={`${t.delete}: ${p.name}`}
+	                              className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
                             >
                               <Trash2 className="w-3.5 h-3.5" />
                             </button>
@@ -843,30 +901,34 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
                 {/* Add price form */}
                 <div className="grid grid-cols-12 gap-2 bg-card-light/40 dark:bg-sidebar-dark/30 p-3 rounded-xl border border-border-light dark:border-border-dark items-center">
-                  <input
-                    type="text"
-                    value={newPriceModel}
+	                  <input
+	                    type="text"
+	                    aria-label={t.priceModelPlaceholder}
+	                    value={newPriceModel}
                     onChange={(e) => setNewPriceModel(e.target.value)}
                     placeholder={t.priceModelPlaceholder}
                     className="col-span-12 sm:col-span-5 px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
                   />
-                  <input
-                    type="number" step="0.01"
-                    value={newPriceIn}
+	                  <input
+	                    type="number" step="0.01"
+	                    aria-label={t.priceInputLabel}
+	                    value={newPriceIn}
                     onChange={(e) => setNewPriceIn(e.target.value)}
                     placeholder={t.priceInputLabel}
                     className="col-span-5 sm:col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
                   />
-                  <input
-                    type="number" step="0.01"
-                    value={newPriceOut}
+	                  <input
+	                    type="number" step="0.01"
+	                    aria-label={t.priceOutputLabel}
+	                    value={newPriceOut}
                     onChange={(e) => setNewPriceOut(e.target.value)}
                     placeholder={t.priceOutputLabel}
                     className="col-span-5 sm:col-span-3 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 dark:text-gray-100"
                   />
-                  <button
-                    onClick={handleAddPrice}
-                    className="col-span-2 sm:col-span-1 flex items-center justify-center p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer transition-colors"
+	                  <button
+	                    onClick={handleAddPrice}
+	                    aria-label={t.addPrice}
+	                    className="col-span-2 sm:col-span-1 flex items-center justify-center p-2 bg-amber-600 hover:bg-amber-700 text-white rounded-lg cursor-pointer transition-colors"
                   >
                     <Plus className="w-4 h-4" />
                   </button>
@@ -884,9 +946,10 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                           <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400">
                             ${(price as ModelPrice).input} / ${(price as ModelPrice).output} <span className="text-gray-400">/1M</span>
                           </span>
-                          <button
-                            onClick={() => store.removeModelPrice(modelId)}
-                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+	                          <button
+	                            onClick={() => store.removeModelPrice(modelId)}
+	                            aria-label={`${t.delete}: ${modelId}`}
+	                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
                           >
                             <Trash2 className="w-3.5 h-3.5" />
                           </button>
@@ -916,16 +979,18 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
 
                   {!store.keyEncryptionEnabled ? (
                     <div className="space-y-2.5">
-                      <input
-                        type="password"
-                        value={encPass}
+	                      <input
+	                        type="password"
+	                        aria-label={t.passphrase}
+	                        value={encPass}
                         onChange={(e) => setEncPass(e.target.value)}
                         placeholder={t.passphrase}
                         className="w-full px-3.5 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 dark:text-gray-100"
                       />
-                      <input
-                        type="password"
-                        value={encPass2}
+	                      <input
+	                        type="password"
+	                        aria-label={t.passphraseConfirm}
+	                        value={encPass2}
                         onChange={(e) => setEncPass2(e.target.value)}
                         placeholder={t.passphraseConfirm}
                         className="w-full px-3.5 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 dark:text-gray-100"
@@ -1028,6 +1093,48 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
           </div>
         </div>
+
+        {(notice || confirmDialog) && (
+          <div className="absolute inset-0 z-20 flex items-center justify-center bg-black/40 backdrop-blur-sm p-4">
+            <div
+              role="alertdialog"
+              aria-modal="true"
+              className="w-full max-w-sm rounded-2xl border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark p-5 shadow-2xl"
+            >
+              <p className="text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-100">
+                {notice || confirmDialog?.message}
+              </p>
+              <div className="mt-5 flex justify-end gap-2">
+                {confirmDialog ? (
+                  <>
+                    <button
+                      type="button"
+                      onClick={closeConfirm}
+                      className="px-3.5 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+                    >
+                      {t.cancel}
+                    </button>
+                    <button
+                      type="button"
+                      onClick={acceptConfirm}
+                      className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white cursor-pointer transition-colors"
+                    >
+                      {t.ok}
+                    </button>
+                  </>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={() => setNotice(null)}
+                    className="px-3.5 py-2 rounded-xl bg-amber-600 hover:bg-amber-700 text-xs font-bold text-white cursor-pointer transition-colors"
+                  >
+                    {t.ok}
+                  </button>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>

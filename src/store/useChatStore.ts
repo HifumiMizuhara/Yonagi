@@ -60,10 +60,32 @@ const buildChatContext = (messages: Message[]) =>
     attachments: message.attachments,
   }));
 
+const getSearchableMessageText = (message: Message) => {
+  const chunks = [
+    message.content,
+    message.thinking || '',
+    ...(message.attachments || []).map((attachment) =>
+      attachment.type === 'image' ? attachment.name : `${attachment.name}\n${attachment.content}`
+    ),
+    ...(message.citations || []).map((citation) => `${citation.title || ''}\n${citation.url}`),
+    ...(message.variants || []).flatMap((variant) => [
+      variant.content,
+      variant.thinking || '',
+      ...(variant.citations || []).map((citation) => `${citation.title || ''}\n${citation.url}`),
+    ]),
+  ];
+  return chunks.filter(Boolean).join('\n');
+};
+
 const findProviderForModel = (
   providers: Record<string, ProviderConfig>,
-  modelId: string
+  modelId: string,
+  providerId?: string
 ) => {
+  if (providerId && providers[providerId]) {
+    return providers[providerId];
+  }
+
   const enabledProvider = Object.values(providers).find(
     (provider) => provider.enabled && provider.models.includes(modelId)
   );
@@ -79,6 +101,7 @@ interface ChatState {
   chats: Chat[];
   messages: Message[];
   activeChatId: string | null;
+  activeProviderId: string;
   activeModelId: string;
   activeEffort: string;
   activeWebSearch: boolean;
@@ -100,6 +123,7 @@ interface ChatState {
   sidebarOpen: boolean;
   settingsOpen: boolean;
   searchOpen: boolean;
+  scrollTargetMessageId: string | null;
   isGenerating: boolean;
   abortController: AbortController | null;
   
@@ -114,7 +138,7 @@ interface ChatState {
   removeModelFromProvider: (providerId: string, modelId: string) => Promise<void>;
   fetchModelsForProvider: (providerId: string) => Promise<void>;
   setTheme: (theme: 'light' | 'dark' | 'system') => void;
-  setActiveModelId: (modelId: string) => Promise<void>;
+  setActiveModelId: (modelId: string, providerId?: string) => Promise<void>;
   generationId: string | null;
   setActiveEffort: (effort: string) => Promise<void>;
   setActiveWebSearch: (enabled: boolean) => Promise<void>;
@@ -122,7 +146,7 @@ interface ChatState {
   // Chat Actions
   loadChats: () => Promise<void>;
   selectChat: (chatId: string | null) => Promise<void>;
-  createChat: (modelId?: string) => Promise<string>;
+  createChat: (modelId?: string, providerId?: string) => Promise<string>;
   deleteChat: (chatId: string) => Promise<void>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   clearAllChats: () => Promise<void>;
@@ -131,12 +155,13 @@ interface ChatState {
   // Messaging Actions
   sendMessage: (content: string, attachments?: Attachment[]) => Promise<void>;
   editUserMessage: (messageId: string, content: string) => Promise<void>;
-  regenerateResponse: (messageIndex: number, targetModelId?: string) => Promise<void>;
+  regenerateResponse: (messageIndex: number, targetModelId?: string, targetProviderId?: string) => Promise<void>;
   switchMessageVariant: (messageId: string, variantIndex: number) => Promise<void>;
   stopGeneration: () => void;
   toggleSidebar: () => void;
   setSettingsOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
+  setScrollTargetMessageId: (messageId: string | null) => void;
 
   // Search
   searchMessages: (query: string) => Promise<SearchResult[]>;
@@ -228,6 +253,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
   globalSystemPrompt: 'You are a helpful assistant.',
   theme: 'system',
   language: 'ja',
+  activeProviderId: 'gemini',
   activeModelId: 'gemini-1.5-flash',
   activeEffort: 'none',
   activeWebSearch: false,
@@ -243,6 +269,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   const streamAssistantReply = async ({
     chatId,
     assistantMessageId,
+    providerId,
     modelId,
     contextMessages,
     variantIndex,
@@ -253,6 +280,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   }: {
     chatId: string;
     assistantMessageId: string;
+    providerId?: string;
     modelId: string;
     contextMessages: Message[];
     variantIndex: number;
@@ -261,7 +289,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     abortLog: string;
     errorLog: string;
   }) => {
-    const providerConfig = findProviderForModel(get().providers, modelId) || get().providers.custom;
+    const providerConfig = findProviderForModel(get().providers, modelId, providerId) || get().providers.custom;
     const controller = new AbortController();
     const myGenId = crypto.randomUUID();
     set({ abortController: controller, generationId: myGenId });
@@ -408,6 +436,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   chats: [],
   messages: [],
   activeChatId: null,
+  activeProviderId: 'gemini',
   activeModelId: 'gemini-1.5-flash',
   activeEffort: 'none',
   activeWebSearch: false,
@@ -426,6 +455,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   sidebarOpen: typeof window !== 'undefined' ? window.innerWidth >= 768 : true,
   settingsOpen: false,
   searchOpen: false,
+  scrollTargetMessageId: null,
   isGenerating: false,
   abortController: null,
   generationId: null,
@@ -466,6 +496,12 @@ export const useChatStore = create<ChatState>((set, get) => {
       });
     }
 
+    const storedProviderId = getSetting<string>('activeProviderId');
+    const activeProviderId =
+      storedProviderId && loadedProviders[storedProviderId]
+        ? storedProviderId
+        : (findProviderForModel(loadedProviders, activeModelId)?.id || 'gemini');
+
     // Read the raw stored value (not getSetting) so an absent setting stays
     // undefined and triggers browser-language detection. getSetting would fall
     // back to DEFAULT_SETTINGS.language ('ja') and the detection never ran.
@@ -495,6 +531,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       globalSystemPrompt: getSetting<string>('globalSystemPrompt'),
       theme,
       language: loadedLanguage as ChatState['language'],
+      activeProviderId,
       activeModelId,
       activeEffort,
       activeWebSearch,
@@ -727,8 +764,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     }
   },
 
-  setActiveModelId: async (modelId) => {
-    set({ activeModelId: modelId });
+  setActiveModelId: async (modelId, providerId) => {
+    const resolvedProviderId = providerId || findProviderForModel(get().providers, modelId)?.id || get().activeProviderId;
+    set({ activeModelId: modelId, activeProviderId: resolvedProviderId });
+    await db.settings.put({ key: 'activeProviderId', value: resolvedProviderId });
     await db.settings.put({ key: 'activeModelId', value: modelId });
   },
 
@@ -775,6 +814,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         .sortBy('timestamp');
       set({ 
         messages: chatMessages,
+        activeProviderId: chat?.providerId || findProviderForModel(get().providers, chat?.modelId || get().activeModelId)?.id || get().activeProviderId,
         activeModelId: chat?.modelId || get().activeModelId,
         activeEffort: chat?.effort || 'none',
         activeWebSearch: chat?.webSearch ?? false,
@@ -784,11 +824,17 @@ export const useChatStore = create<ChatState>((set, get) => {
     }
   },
 
-  createChat: async (modelId) => {
+  createChat: async (modelId, providerId) => {
+    const resolvedModelId = modelId || get().activeModelId;
+    const resolvedProviderId =
+      providerId ||
+      (modelId ? findProviderForModel(get().providers, modelId)?.id : get().activeProviderId) ||
+      get().activeProviderId;
     const newChat: Chat = {
       id: crypto.randomUUID(),
       title: 'New Chat',
-      modelId: modelId || get().activeModelId,
+      providerId: resolvedProviderId,
+      modelId: resolvedModelId,
       temperature: 0.7,
       effort: get().activeEffort,
       webSearch: get().activeWebSearch,
@@ -863,11 +909,16 @@ export const useChatStore = create<ChatState>((set, get) => {
     // 2. Prepare Assistant response placeholder with initial variant
     const assistantMsgId = crypto.randomUUID();
     const activeModelId = activeChat?.modelId || get().activeModelId;
+    const activeProviderId =
+      activeChat?.providerId ||
+      findProviderForModel(get().providers, activeModelId, get().activeProviderId)?.id ||
+      get().activeProviderId;
 
     const initialVariant: MessageVariant = {
       id: crypto.randomUUID(),
       content: '',
       thinking: '',
+      modelProviderId: activeProviderId,
       modelUsed: activeModelId,
       timestamp: Date.now(),
     };
@@ -878,6 +929,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       role: 'assistant',
       content: '',
       thinking: '',
+      modelProviderId: activeProviderId,
       modelUsed: activeModelId,
       timestamp: Date.now() + 1,
       variants: [initialVariant],
@@ -894,6 +946,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     await streamAssistantReply({
       chatId,
       assistantMessageId: assistantMsgId,
+      providerId: activeProviderId,
       modelId: activeModelId,
       contextMessages: messagesSoFar,
       variantIndex: 0,
@@ -950,12 +1003,18 @@ export const useChatStore = create<ChatState>((set, get) => {
       (messages[messageIndex + 1]?.role === 'assistant' && messages[messageIndex + 1].modelUsed) ||
       activeChat?.modelId ||
       get().activeModelId;
+    const responseProviderId =
+      (messages[messageIndex + 1]?.role === 'assistant' && messages[messageIndex + 1].modelProviderId) ||
+      activeChat?.providerId ||
+      findProviderForModel(get().providers, responseModelId, get().activeProviderId)?.id ||
+      get().activeProviderId;
 
     const assistantMsgId = crypto.randomUUID();
     const initialVariant: MessageVariant = {
       id: crypto.randomUUID(),
       content: '',
       thinking: '',
+      modelProviderId: responseProviderId,
       modelUsed: responseModelId,
       timestamp: Date.now(),
     };
@@ -966,6 +1025,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       role: 'assistant',
       content: '',
       thinking: '',
+      modelProviderId: responseProviderId,
       modelUsed: responseModelId,
       timestamp: Date.now() + 1,
       variants: [initialVariant],
@@ -981,6 +1041,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     await streamAssistantReply({
       chatId,
       assistantMessageId: assistantMsgId,
+      providerId: responseProviderId,
       modelId: responseModelId,
       contextMessages: baseMessages,
       variantIndex: 0,
@@ -991,7 +1052,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     });
   },
 
-  regenerateResponse: async (messageIndex, targetModelId) => {
+  regenerateResponse: async (messageIndex, targetModelId, targetProviderId) => {
     const chatId = get().activeChatId;
     if (!chatId || messageIndex < 0 || messageIndex >= get().messages.length) return;
 
@@ -1016,10 +1077,16 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     // 2. Prepare new response variant
     const modelUsed = targetModelId || assistantMsg.modelUsed || get().activeModelId;
+    const providerUsed =
+      targetProviderId ||
+      assistantMsg.modelProviderId ||
+      findProviderForModel(get().providers, modelUsed, get().activeProviderId)?.id ||
+      get().activeProviderId;
     const newVariant: MessageVariant = {
       id: crypto.randomUUID(),
       content: '',
       thinking: '',
+      modelProviderId: providerUsed,
       modelUsed,
       timestamp: Date.now(),
     };
@@ -1031,6 +1098,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         id: crypto.randomUUID(),
         content: assistantMsg.content,
         thinking: assistantMsg.thinking || '',
+        modelProviderId: assistantMsg.modelProviderId,
         modelUsed: assistantMsg.modelUsed,
         timestamp: assistantMsg.timestamp,
       });
@@ -1043,6 +1111,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       ...assistantMsg,
       content: '', // Start empty for streaming
       thinking: '',
+      modelProviderId: providerUsed,
       modelUsed,
       variants: newVariants,
       activeVariantIndex: newActiveIndex,
@@ -1062,6 +1131,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     await streamAssistantReply({
       chatId,
       assistantMessageId: assistantMsg.id,
+      providerId: providerUsed,
       modelId: modelUsed,
       contextMessages: messagesBefore,
       variantIndex: newActiveIndex,
@@ -1086,6 +1156,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       activeVariantIndex: variantIndex,
       content: variant.content,
       thinking: variant.thinking || '',
+      modelProviderId: variant.modelProviderId,
       modelUsed: variant.modelUsed,
       citations: variant.citations || [],
       usage: variant.usage,
@@ -1111,6 +1182,8 @@ export const useChatStore = create<ChatState>((set, get) => {
     const branchChat: Chat = {
       id: newChatId,
       title: `${activeChat.title} (Branch)`,
+      systemPrompt: activeChat.systemPrompt,
+      providerId: activeChat.providerId,
       modelId: activeChat.modelId,
       temperature: activeChat.temperature,
       effort: activeChat.effort,
@@ -1129,10 +1202,14 @@ export const useChatStore = create<ChatState>((set, get) => {
       role: m.role,
       content: m.content,
       attachments: m.attachments ? [...m.attachments] : undefined,
+      modelProviderId: m.modelProviderId,
       modelUsed: m.modelUsed,
       timestamp: m.timestamp,
-      variants: m.variants ? [...m.variants] : undefined,
+      variants: m.variants ? m.variants.map((variant) => ({ ...variant })) : undefined,
       activeVariantIndex: m.activeVariantIndex,
+      thinking: m.thinking,
+      citations: m.citations ? [...m.citations] : undefined,
+      usage: m.usage ? { ...m.usage } : undefined,
     }));
 
     if (copiedMessages.length > 0) {
@@ -1166,6 +1243,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     set({ searchOpen: open });
   },
 
+  setScrollTargetMessageId: (messageId) => {
+    set({ scrollTargetMessageId: messageId });
+  },
+
   // ---- Search ----
   searchMessages: async (query) => {
     const q = query.trim().toLowerCase();
@@ -1180,7 +1261,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     // into memory at once. Early-exit once the 100-result cap is reached.
     await db.messages.each((m) => {
       if (results.length >= 100) return;
-      const content = m.content || '';
+      const content = getSearchableMessageText(m);
       const idx = content.toLowerCase().indexOf(q);
       if (idx === -1) return;
 

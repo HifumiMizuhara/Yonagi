@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { useChatStore } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
+import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import { Lock, KeyRound } from 'lucide-react';
 
 /**
@@ -13,6 +14,9 @@ export const UnlockModal: React.FC = () => {
   const [error, setError] = useState(false);
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const skipUnlock = () => useChatStore.setState({ keysLocked: false });
+  useDialogAccessibility(dialogRef, skipUnlock);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
 
@@ -30,12 +34,19 @@ export const UnlockModal: React.FC = () => {
 
   return (
     <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
-      <div className="relative flex flex-col w-full max-w-sm bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/40 overflow-hidden font-sans backdrop-blur-2xl p-7 space-y-5">
+      <div
+        ref={dialogRef}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="unlock-dialog-title"
+        tabIndex={-1}
+        className="relative flex flex-col w-full max-w-sm bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/40 overflow-hidden font-sans backdrop-blur-2xl p-7 space-y-5"
+      >
         <div className="flex flex-col items-center text-center space-y-3 select-none">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-yellow-400/20 flex items-center justify-center text-amber-600 dark:text-amber-500 border border-amber-500/20">
             <Lock className="w-7 h-7" />
           </div>
-          <h2 className="text-lg font-bold text-gray-900 dark:text-gray-50 font-heading">{t.unlockTitle}</h2>
+	          <h2 id="unlock-dialog-title" className="text-lg font-bold text-gray-900 dark:text-gray-50 font-heading">{t.unlockTitle}</h2>
           <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{t.unlockDesc}</p>
         </div>
 
@@ -47,7 +58,8 @@ export const UnlockModal: React.FC = () => {
             value={passphrase}
             onChange={(e) => setPassphrase(e.target.value)}
             onKeyDown={(e) => e.key === 'Enter' && handleUnlock()}
-            placeholder={t.passphrase}
+	            placeholder={t.passphrase}
+	            aria-label={t.passphrase}
             className="w-full pl-10 pr-3 py-2.5 text-sm bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-amber-500 focus:ring-2 focus:ring-amber-500/10 dark:text-gray-100"
           />
         </div>
@@ -65,7 +77,7 @@ export const UnlockModal: React.FC = () => {
             {t.unlock}
           </button>
           <button
-            onClick={() => useChatStore.setState({ keysLocked: false })}
+	            onClick={skipUnlock}
             className="px-4 py-2.5 bg-gray-150 dark:bg-card-dark text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold cursor-pointer transition-colors"
           >
             {t.skipUnlock}

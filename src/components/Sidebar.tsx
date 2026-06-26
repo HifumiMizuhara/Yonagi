@@ -11,6 +11,7 @@ export const Sidebar: React.FC = () => {
   const { t, language } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
+  const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null);
 
   const handleStartRename = (chat: Chat, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -33,9 +34,7 @@ export const Sidebar: React.FC = () => {
 
   const handleDeleteChat = async (chatId: string, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (confirm(t.deleteChatConfirm)) {
-      await store.deleteChat(chatId);
-    }
+    setPendingDeleteChatId(chatId);
   };
 
   const groupChats = (chats: Chat[]) => {
@@ -109,9 +108,10 @@ export const Sidebar: React.FC = () => {
   if (!store.sidebarOpen) {
     return (
       <div className="absolute left-4 top-4.5 z-40">
-        <button
-          onClick={store.toggleSidebar}
-          className="p-2 border border-border-light/80 dark:border-border-dark bg-card-light/90 dark:bg-card-dark/90 text-gray-600 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 rounded-xl shadow-lg shadow-black/5 hover:shadow-amber-500/10 cursor-pointer transition-all duration-300 backdrop-blur-md"
+          <button
+            onClick={store.toggleSidebar}
+            aria-label={t.close}
+            className="p-2 border border-border-light/80 dark:border-border-dark bg-card-light/90 dark:bg-card-dark/90 text-gray-600 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 rounded-xl shadow-lg shadow-black/5 hover:shadow-amber-500/10 cursor-pointer transition-all duration-300 backdrop-blur-md"
           title={t.newChat}
         >
           <PanelLeft className="w-4.5 h-4.5" />
@@ -122,6 +122,33 @@ export const Sidebar: React.FC = () => {
 
   return (
     <>
+    {pendingDeleteChatId && (
+      <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+        <div role="alertdialog" aria-modal="true" className="w-full max-w-sm rounded-2xl border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark p-5 shadow-2xl">
+          <p className="text-sm font-semibold leading-relaxed text-gray-800 dark:text-gray-100">{t.deleteChatConfirm}</p>
+          <div className="mt-5 flex justify-end gap-2">
+            <button
+              type="button"
+              onClick={() => setPendingDeleteChatId(null)}
+              className="px-3.5 py-2 rounded-xl border border-border-light dark:border-border-dark text-xs font-bold text-gray-600 dark:text-gray-300 hover:text-amber-600 dark:hover:text-amber-400 cursor-pointer transition-colors"
+            >
+              {t.cancel}
+            </button>
+            <button
+              type="button"
+              onClick={async () => {
+                const chatId = pendingDeleteChatId;
+                setPendingDeleteChatId(null);
+                await store.deleteChat(chatId);
+              }}
+              className="px-3.5 py-2 rounded-xl bg-red-600 hover:bg-red-700 text-xs font-bold text-white cursor-pointer transition-colors"
+            >
+              {t.delete}
+            </button>
+          </div>
+        </div>
+      </div>
+    )}
     {/* Backdrop for the mobile overlay sidebar */}
     <div
       onClick={store.toggleSidebar}
@@ -143,6 +170,7 @@ export const Sidebar: React.FC = () => {
         <div className="flex items-center space-x-1">
           <button
             onClick={() => store.setSearchOpen(true)}
+            aria-label={t.search}
             className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"
             title={t.search}
           >
@@ -150,6 +178,7 @@ export const Sidebar: React.FC = () => {
           </button>
           <button
             onClick={handleNewChat}
+            aria-label={t.newChat}
             className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"
             title={t.newChat}
           >
@@ -157,6 +186,7 @@ export const Sidebar: React.FC = () => {
           </button>
           <button
             onClick={store.toggleSidebar}
+            aria-label={t.close}
             className="p-1.5 text-gray-500 dark:text-gray-400 hover:text-amber-600 dark:hover:text-amber-500 hover:bg-card-light dark:hover:bg-card-dark rounded-lg cursor-pointer transition-colors"
             title={t.close}
           >
@@ -233,6 +263,7 @@ export const Sidebar: React.FC = () => {
                           <div className="hover-action absolute right-2.5 flex space-x-1.5 transition-opacity duration-200">
                             <button
                               onClick={(e) => handleStartRename(chat, e)}
+                              aria-label={t.rename}
                               className="p-1 text-gray-400 hover:text-amber-600 dark:hover:text-amber-400 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-md cursor-pointer transition-colors"
                               title="タイトル変更"
                             >
@@ -240,6 +271,7 @@ export const Sidebar: React.FC = () => {
                             </button>
                             <button
                               onClick={(e) => handleDeleteChat(chat.id, e)}
+                              aria-label={t.delete}
                               className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
                               title="削除"
                             >
@@ -253,12 +285,14 @@ export const Sidebar: React.FC = () => {
                           <div className="flex space-x-0.5 ml-1 shrink-0 z-10">
                             <button
                               onClick={(e) => handleSaveRename(chat.id, e)}
+                              aria-label={t.save}
                               className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"
                             >
                               <Check className="w-3.5 h-3.5" />
                             </button>
                             <button
                               onClick={(e) => handleCancelRename(e)}
+                              aria-label={t.cancel}
                               className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"
                             >
                               <X className="w-3.5 h-3.5" />
