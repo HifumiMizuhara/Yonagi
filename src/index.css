@@ -7,40 +7,45 @@
   --color-bg-dark: #0f0f11;
   --color-card-dark: #161619;
   --color-border-dark: rgba(255, 255, 255, 0.08);
-  
+
   --color-sidebar-light: #f5f4f0;
   --color-bg-light: #FAF9F6;
   --color-card-light: #ffffff;
   --color-border-light: rgba(0, 0, 0, 0.06);
-  
-  --color-accent-blue: #d97706; /* Map blue to Gold/Amber (Sunflower) for backwards compatibility */
+
+  --color-accent-blue: #d97706;
   --color-accent-green: #10b981;
-  
+
   --color-sun-gold: #d97706;
   --color-sun-gold-hover: #b45309;
   --color-sun-gold-light: rgba(217, 119, 6, 0.1);
   --color-sun-gold-glow: rgba(217, 119, 6, 0.25);
-  
-  --animate-fade-in: fade-in 0.3s ease-out;
-  --animate-slide-up: slide-up 0.4s cubic-bezier(0.16, 1, 0.3, 1);
-  --animate-scale-up: scale-up 0.2s cubic-bezier(0.34, 1.56, 0.64, 1);
+
+  --animate-fade-in: fade-in 0.25s ease-out;
+  --animate-slide-up: slide-up 0.35s cubic-bezier(0.16, 1, 0.3, 1);
+  --animate-scale-up: scale-up 0.18s cubic-bezier(0.34, 1.56, 0.64, 1);
   --animate-pulse-slow: pulse-slow 3s infinite ease-in-out;
-  
+  --animate-shimmer: shimmer 2s infinite linear;
+
   @keyframes fade-in {
     from { opacity: 0; }
     to { opacity: 1; }
   }
   @keyframes slide-up {
-    from { transform: translateY(12px); opacity: 0; }
+    from { transform: translateY(10px); opacity: 0; }
     to { transform: translateY(0); opacity: 1; }
   }
   @keyframes scale-up {
-    from { transform: scale(0.95); opacity: 0; }
+    from { transform: scale(0.94); opacity: 0; }
     to { transform: scale(1); opacity: 1; }
   }
   @keyframes pulse-slow {
-    0%, 100% { opacity: 0.25; transform: scale(1); }
-    50% { opacity: 0.45; transform: scale(1.03); }
+    0%, 100% { opacity: 0.2; transform: scale(1); }
+    50% { opacity: 0.4; transform: scale(1.04); }
+  }
+  @keyframes shimmer {
+    0% { background-position: -200% 0; }
+    100% { background-position: 200% 0; }
   }
 }
 
@@ -50,8 +55,8 @@
 
 /* Custom scrollbar */
 ::-webkit-scrollbar {
-  width: 5px;
-  height: 5px;
+  width: 4px;
+  height: 4px;
 }
 
 ::-webkit-scrollbar-track {
@@ -59,16 +64,15 @@
 }
 
 ::-webkit-scrollbar-thumb {
-  background: rgba(217, 119, 6, 0.15);
+  background: rgba(217, 119, 6, 0.12);
   border-radius: 9999px;
   transition: background 0.2s;
 }
 
 ::-webkit-scrollbar-thumb:hover {
-  background: rgba(217, 119, 6, 0.4);
+  background: rgba(217, 119, 6, 0.35);
 }
 
-/* Hide scrollbar while keeping horizontal scroll (mobile control bars) */
 .no-scrollbar {
   -ms-overflow-style: none;
   scrollbar-width: none;
@@ -77,13 +81,11 @@
   display: none;
 }
 
-/* Honor the iOS home-indicator safe area for the bottom composer */
 .pb-safe {
   padding-bottom: max(1rem, env(safe-area-inset-bottom));
 }
 
-/* Message actions must stay visible on touch devices; hover-only controls
-   become invisible after CSS finishes loading on mobile Chrome. */
+/* Message action strip: visible on touch, hover-reveal on desktop */
 .message-action-strip {
   opacity: 1;
 }
@@ -99,11 +101,7 @@
   }
 }
 
-/* Same mobile-Chrome flash hits other hover-revealed controls (chat list
-   rename/delete, provider/model delete buttons): they paint visible during
-   load, then `opacity-0 group-hover:opacity-100` hides them once Tailwind
-   CSS applies — and touch has no hover to bring them back. Default visible,
-   hide-then-reveal only on real hover/fine-pointer desktops. */
+/* Hover-reveal actions */
 .hover-action {
   opacity: 1;
 }
@@ -120,8 +118,7 @@
   }
 }
 
-/* Prevent iOS Safari from auto-zooming when focusing inputs <16px.
-   Only on small viewports so the compact desktop sizing is untouched. */
+/* Prevent iOS Safari auto-zoom on inputs < 16px */
 @media (max-width: 640px) {
   input[type="text"],
   input[type="password"],
@@ -134,7 +131,7 @@
   }
 }
 
-/* Page structural resets */
+/* Page resets */
 html, body, #root {
   margin: 0;
   padding: 0;
@@ -152,83 +149,89 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 
 /* Glassmorphism helpers */
 .glass-panel-light {
-  background: rgba(255, 255, 255, 0.7);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.5);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.03);
+  background: rgba(255, 255, 255, 0.72);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.55);
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.04);
 }
 
 .glass-panel-dark {
-  background: rgba(22, 22, 25, 0.65);
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border: 1px solid rgba(255, 255, 255, 0.06);
-  box-shadow: 0 4px 30px rgba(0, 0, 0, 0.2);
+  background: rgba(22, 22, 25, 0.68);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid rgba(255, 255, 255, 0.07);
+  box-shadow: 0 4px 32px rgba(0, 0, 0, 0.25);
 }
 
 .glass-input-light {
-  background: rgba(255, 255, 255, 0.6);
+  background: rgba(255, 255, 255, 0.65);
   border: 1px solid rgba(0, 0, 0, 0.08);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-input-light:focus-within {
-  background: rgba(255, 255, 255, 0.95);
+  background: rgba(255, 255, 255, 0.96);
   border-color: #d97706;
-  box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.1);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.12);
 }
 
 .glass-input-dark {
-  background: rgba(22, 22, 25, 0.6);
+  background: rgba(22, 22, 25, 0.65);
   border: 1px solid rgba(255, 255, 255, 0.08);
-  transition: all 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+  transition: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
 }
 
 .glass-input-dark:focus-within {
-  background: rgba(22, 22, 25, 0.9);
+  background: rgba(22, 22, 25, 0.92);
   border-color: #d97706;
-  box-shadow: 0 0 0 4px rgba(217, 119, 6, 0.2);
+  box-shadow: 0 0 0 3px rgba(217, 119, 6, 0.18);
 }
 
-/* Custom styles for chat messages and markdown styling */
+/* Prose / markdown rendering */
 .prose {
-  font-size: 0.975rem;
-  line-height: 1.625;
+  font-size: 0.9375rem;
+  line-height: 1.7;
   letter-spacing: 0.01em;
 }
 
 .prose p {
-  margin-top: 0.6rem;
-  margin-bottom: 0.6rem;
+  margin-top: 0.65rem;
+  margin-bottom: 0.65rem;
 }
 
-.prose p:first-child {
-  margin-top: 0;
-}
-
-.prose p:last-child {
-  margin-bottom: 0;
-}
+.prose p:first-child { margin-top: 0; }
+.prose p:last-child { margin-bottom: 0; }
 
 .prose ul, .prose ol {
-  margin-top: 0.6rem;
-  margin-bottom: 0.6rem;
+  margin-top: 0.65rem;
+  margin-bottom: 0.65rem;
   padding-left: 1.5rem;
 }
 
-.prose ul {
-  list-style-type: disc;
-}
-
-.prose ol {
-  list-style-type: decimal;
-}
+.prose ul { list-style-type: disc; }
+.prose ol { list-style-type: decimal; }
 
 .prose li {
   margin-top: 0.3rem;
   margin-bottom: 0.3rem;
 }
+
+.prose h1, .prose h2, .prose h3, .prose h4 {
+  font-family: "Avenir Next Condensed", "DIN Alternate", "Hiragino Sans", sans-serif;
+  font-weight: 700;
+  line-height: 1.25;
+  margin-top: 1.5rem;
+  margin-bottom: 0.75rem;
+}
+
+.prose h1:first-child,
+.prose h2:first-child,
+.prose h3:first-child { margin-top: 0; }
+
+.prose h1 { font-size: 1.375rem; }
+.prose h2 { font-size: 1.2rem; }
+.prose h3 { font-size: 1.05rem; }
 
 .prose pre {
   margin-top: 1rem;
@@ -239,20 +242,19 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 
 .prose code {
   font-family: "SFMono-Regular", "Cascadia Code", ui-monospace, monospace;
-  font-size: 0.85em;
-  padding: 0.15rem 0.35rem;
+  font-size: 0.84em;
+  padding: 0.15rem 0.38rem;
   border-radius: 0.375rem;
+  background: rgba(217, 119, 6, 0.08);
+  color: #b45309;
+  border: 1px solid rgba(217, 119, 6, 0.15);
+  font-weight: 500;
 }
 
-@media (prefers-reduced-motion: reduce) {
-  *,
-  *::before,
-  *::after {
-    animation-duration: 0.001ms !important;
-    animation-iteration-count: 1 !important;
-    scroll-behavior: auto !important;
-    transition-duration: 0.001ms !important;
-  }
+.dark .prose code {
+  background: rgba(217, 119, 6, 0.12);
+  color: #fbbf24;
+  border-color: rgba(217, 119, 6, 0.2);
 }
 
 .prose table {
@@ -265,7 +267,7 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 
 .prose th, .prose td {
   border: 1px solid rgba(0, 0, 0, 0.08);
-  padding: 0.6rem 0.85rem;
+  padding: 0.6rem 0.9rem;
   text-align: left;
 }
 
@@ -274,12 +276,15 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
 }
 
 .prose th {
-  font-weight: 600;
-  background-color: rgba(0, 0, 0, 0.02);
+  font-weight: 700;
+  background-color: rgba(0, 0, 0, 0.03);
+  font-size: 0.85em;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
 }
 
 .dark .prose th {
-  background-color: rgba(255, 255, 255, 0.02);
+  background-color: rgba(255, 255, 255, 0.03);
 }
 
 .prose blockquote {
@@ -288,9 +293,47 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
   margin-top: 1rem;
   margin-bottom: 1rem;
   font-style: italic;
-  color: rgba(0, 0, 0, 0.6);
+  color: rgba(0, 0, 0, 0.55);
+  background: rgba(217, 119, 6, 0.04);
+  border-radius: 0 0.5rem 0.5rem 0;
+  padding-top: 0.5rem;
+  padding-bottom: 0.5rem;
+  padding-right: 0.75rem;
 }
 
 .dark .prose blockquote {
-  color: rgba(255, 255, 255, 0.6);
+  color: rgba(255, 255, 255, 0.55);
+  background: rgba(217, 119, 6, 0.06);
+}
+
+.prose a {
+  color: #d97706;
+  text-decoration: underline;
+  text-decoration-color: rgba(217, 119, 6, 0.4);
+  transition: color 0.15s, text-decoration-color 0.15s;
+}
+
+.prose a:hover {
+  color: #b45309;
+  text-decoration-color: rgba(180, 83, 9, 0.6);
+}
+
+.dark .prose a {
+  color: #fbbf24;
+  text-decoration-color: rgba(251, 191, 36, 0.35);
+}
+
+.dark .prose a:hover {
+  color: #f59e0b;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    scroll-behavior: auto !important;
+    transition-duration: 0.001ms !important;
+  }
 }

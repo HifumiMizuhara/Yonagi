@@ -1,8 +1,10 @@
 import { create } from 'zustand';
 import { db, type Chat, type Message, type MessageVariant, type Attachment, type ProviderConfig, type Citation, type TokenUsage, type PromptPreset, type ModelPrice } from '../services/db';
 import { ApiError, streamChatCompletion } from '../services/api';
+import { buildApiUrl, migrateProviderModels, replaceRetiredModel, stripProviderKeys } from '../utils/providerCompatibility';
 import { encryptString, decryptString, type EncryptedPayload } from '../utils/crypto';
 import { translations } from '../utils/i18n';
+import { estimateTokens } from '../utils/tokens';
 
 export interface SearchResult {
   chatId: string;
@@ -117,6 +119,7 @@ interface ChatState {
   // Key encryption State
   keyEncryptionEnabled: boolean;
   keysLocked: boolean;           // true when encryption is on but keys not yet unlocked
+  unlockPromptOpen: boolean;
   sessionPassphrase: string | null; // held in memory only
 
   // UI State
@@ -126,6 +129,7 @@ interface ChatState {
   scrollTargetMessageId: string | null;
   isGenerating: boolean;
   abortController: AbortController | null;
+  generationChatId: string | null;
   
   // Actions
   init: () => Promise<void>;
@@ -180,6 +184,8 @@ interface ChatState {
   enableKeyEncryption: (passphrase: string) => Promise<void>;
   disableKeyEncryption: () => Promise<void>;
   unlockKeys: (passphrase: string) => Promise<boolean>;
+  dismissUnlockPrompt: () => void;
+  openUnlockPrompt: () => void;
 }
 
 const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
@@ -189,7 +195,7 @@ const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
     enabled: true,
     baseUrl: 'https://generativelanguage.googleapis.com',
     apiKey: '',
-    models: ['gemini-1.5-flash', 'gemini-1.5-pro'],
+    models: ['gemini-3.5-flash', 'gemini-2.5-pro'],
     corsProxy: '',
   },
   openai: {
@@ -198,7 +204,7 @@ const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
     enabled: false,
     baseUrl: 'https://api.openai.com',
     apiKey: '',
-    models: ['gpt-4o-mini', 'gpt-4o'],
+    models: ['gpt-5.2', 'gpt-5-mini', 'gpt-4.1-mini'],
     corsProxy: '',
   },
   claude: {
@@ -207,7 +213,7 @@ const DEFAULT_PROVIDERS: Record<string, ProviderConfig> = {
     enabled: false,
     baseUrl: 'https://api.anthropic.com',
     apiKey: '',
-    models: ['claude-3-5-sonnet-20240620', 'claude-3-5-haiku-20241022'],
+    models: ['claude-sonnet-4-6', 'claude-haiku-4-5-20251001'],
     corsProxy: '',
   },
   deepseek: {
@@ -254,7 +260,7 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
   theme: 'system',
   language: 'ja',
   activeProviderId: 'gemini',
-  activeModelId: 'gemini-1.5-flash',
+  activeModelId: 'gemini-3.5-flash',
   activeEffort: 'none',
   activeWebSearch: false,
   sidebarOpen: 'true',
@@ -292,23 +298,40 @@ export const useChatStore = create<ChatState>((set, get) => {
     const providerConfig = findProviderForModel(get().providers, modelId, providerId) || get().providers.custom;
     const controller = new AbortController();
     const myGenId = crypto.randomUUID();
-    set({ abortController: controller, generationId: myGenId });
+    set({ abortController: controller, generationId: myGenId, generationChatId: chatId });
 
     let dbWriteTimer: ReturnType<typeof setTimeout> | null = null;
+    let uiUpdateTimer: ReturnType<typeof setTimeout> | null = null;
+    const storedAssistantMessage = await db.messages.get(assistantMessageId);
+    if (!storedAssistantMessage) {
+      set({ isGenerating: false, abortController: null, generationId: null, generationChatId: null });
+      return;
+    }
+    let currentAssistantMessage: Message = storedAssistantMessage;
 
     const flushMessageToDb = async () => {
-      const updatedMessage = get().messages.find((m) => m.id === assistantMessageId);
-      if (updatedMessage) await db.messages.put(updatedMessage);
+      if (get().generationId !== myGenId) return;
+      await db.messages.put(currentAssistantMessage);
     };
 
-    // Update in-memory immediately; batch DB writes to avoid IndexedDB overload
-    // during high-frequency token streams (20–50 chunks/s on fast models).
-    const updateAssistantMessage = async (transform: (message: Message) => Message) => {
+    const commitVisibleMessage = () => {
+      uiUpdateTimer = null;
+      if (get().generationId !== myGenId || get().activeChatId !== chatId) return;
       set((state) => ({
         messages: state.messages.map((message) =>
-          message.id === assistantMessageId ? transform(message) : message
+          message.id === assistantMessageId ? currentAssistantMessage : message
         ),
       }));
+    };
+
+    // Keep every chunk in the local message, but batch React and IndexedDB work.
+    // Re-rendering a long Markdown history for every network chunk is needlessly costly.
+    const updateAssistantMessage = async (transform: (message: Message) => Message) => {
+      if (get().generationId !== myGenId) return;
+      currentAssistantMessage = transform(currentAssistantMessage);
+      if (!uiUpdateTimer) {
+        uiUpdateTimer = setTimeout(commitVisibleMessage, 80);
+      }
 
       if (dbWriteTimer) clearTimeout(dbWriteTimer);
       dbWriteTimer = setTimeout(flushMessageToDb, 200);
@@ -394,6 +417,26 @@ export const useChatStore = create<ChatState>((set, get) => {
         },
         applyUsage
       );
+
+      // If the provider didn't return usage stats (e.g. Gemini via OpenRouter),
+      // fall back to a local token estimate so the cost badge still appears.
+      if (accumulatedUsage === null && accumulatedText.length > 0) {
+        const inputText = (systemPrompt || '') + contextMessages.map((m) => m.content || '').join(' ');
+        const estimatedUsage: TokenUsage = {
+          inputTokens: estimateTokens(inputText),
+          outputTokens: estimateTokens(accumulatedText),
+          estimated: true,
+        };
+        accumulatedUsage = estimatedUsage;
+        await updateAssistantMessage((message) => ({
+          ...message,
+          usage: estimatedUsage,
+          variants: updateVariant(message, (variant) => ({
+            ...variant,
+            usage: estimatedUsage,
+          })),
+        }));
+      }
     } catch (error) {
       if (error instanceof Error && error.name === 'AbortError') {
         console.log(abortLog);
@@ -414,20 +457,29 @@ export const useChatStore = create<ChatState>((set, get) => {
         });
       }
     } finally {
-      if (get().generationId === myGenId) {
-        set({ isGenerating: false, abortController: null, generationId: null });
-      }
+      const stillCurrent = get().generationId === myGenId;
       try {
         // Flush any pending debounced DB write before updating chat metadata.
         if (dbWriteTimer) {
           clearTimeout(dbWriteTimer);
           dbWriteTimer = null;
         }
-        await flushMessageToDb();
-        await db.chats.update(chatId, { updatedAt: Date.now() });
-        await get().loadChats();
+        if (uiUpdateTimer) {
+          clearTimeout(uiUpdateTimer);
+          uiUpdateTimer = null;
+        }
+        if (stillCurrent) {
+          commitVisibleMessage();
+          await flushMessageToDb();
+          await db.chats.update(chatId, { updatedAt: Date.now() });
+          await get().loadChats();
+        }
       } catch (e) {
         console.error('Failed to update chat metadata:', e);
+      } finally {
+        if (get().generationId === myGenId) {
+          set({ isGenerating: false, abortController: null, generationId: null, generationChatId: null });
+        }
       }
     }
   };
@@ -437,7 +489,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   messages: [],
   activeChatId: null,
   activeProviderId: 'gemini',
-  activeModelId: 'gemini-1.5-flash',
+  activeModelId: 'gemini-3.5-flash',
   activeEffort: 'none',
   activeWebSearch: false,
 
@@ -450,6 +502,7 @@ export const useChatStore = create<ChatState>((set, get) => {
 
   keyEncryptionEnabled: false,
   keysLocked: false,
+  unlockPromptOpen: false,
   sessionPassphrase: null,
 
   sidebarOpen: typeof window !== 'undefined' ? window.innerWidth >= 768 : true,
@@ -459,6 +512,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   isGenerating: false,
   abortController: null,
   generationId: null,
+  generationChatId: null,
 
   init: async () => {
     // 1. Load settings from DB
@@ -472,7 +526,8 @@ export const useChatStore = create<ChatState>((set, get) => {
       (settingsMap[key] !== undefined ? settingsMap[key] : DEFAULT_SETTINGS[key]) as T;
 
     const theme = getSetting<'system' | 'light' | 'dark'>('theme');
-    const activeModelId = getSetting<string>('activeModelId');
+    const storedActiveModelId = getSetting<string>('activeModelId');
+    const activeModelId = replaceRetiredModel(storedActiveModelId);
     const activeEffort = getSetting<string>('activeEffort') || 'none';
     const activeWebSearch = getSetting<unknown>('activeWebSearch') === true || getSetting<unknown>('activeWebSearch') === 'true';
     // Default the sidebar closed on phones (it's an overlay there); honor any
@@ -495,6 +550,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         }
       });
     }
+    loadedProviders = migrateProviderModels(loadedProviders);
 
     const storedProviderId = getSetting<string>('activeProviderId');
     const activeProviderId =
@@ -525,6 +581,17 @@ export const useChatStore = create<ChatState>((set, get) => {
     // If encryption is on and an encrypted blob exists, keys live only inside it;
     // the providers loaded from DB have empty apiKey until the user unlocks.
     const keysLocked = keyEncryptionEnabled && !!encryptedKeys;
+    if (keysLocked) {
+      loadedProviders = stripProviderKeys(loadedProviders);
+    }
+
+    await db.settings.put({ key: 'providers', value: loadedProviders });
+    if (activeModelId !== storedActiveModelId) {
+      await db.settings.put({ key: 'activeModelId', value: activeModelId });
+    }
+    await db.chats.toCollection().modify((chat) => {
+      chat.modelId = replaceRetiredModel(chat.modelId);
+    });
 
     set({
       providers: loadedProviders,
@@ -539,12 +606,14 @@ export const useChatStore = create<ChatState>((set, get) => {
       modelPricing,
       keyEncryptionEnabled,
       keysLocked,
+      unlockPromptOpen: keysLocked,
       sessionPassphrase: null,
       sidebarOpen: sidebarRaw === 'true' || sidebarRaw === true,
     });
 
     // Apply theme
     get().setTheme(theme);
+    document.documentElement.lang = loadedLanguage;
 
     // 2. Load chats list
     await get().loadChats();
@@ -557,9 +626,13 @@ export const useChatStore = create<ChatState>((set, get) => {
     if (key === 'theme') {
       get().setTheme(value as 'system' | 'light' | 'dark');
     }
+    if (key === 'language') {
+      document.documentElement.lang = value as string;
+    }
   },
 
   updateProvider: async (providerId, config) => {
+    if ('apiKey' in config && get().keysLocked) return;
     const currentProviders = { ...get().providers };
     if (!currentProviders[providerId]) return;
 
@@ -615,21 +688,19 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     if (providerId === 'gemini') {
       if (!prov.apiKey) return false;
-      url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models`;
+      url = `${corsPrefix}${buildApiUrl(prov.baseUrl || 'https://generativelanguage.googleapis.com', 'v1beta', 'models')}`;
       headers['x-goog-api-key'] = prov.apiKey;
     } else if (providerId === 'ollama') {
       url = `${corsPrefix}${prov.baseUrl.replace(/\/$/, '')}/api/tags`;
     } else if (providerId === 'claude') {
       if (!prov.apiKey) return false;
-      url = `${corsPrefix}https://api.anthropic.com/v1/models`;
+      url = `${corsPrefix}${buildApiUrl(prov.baseUrl || 'https://api.anthropic.com', 'v1', 'models')}`;
       headers['x-api-key'] = prov.apiKey;
       headers['anthropic-version'] = '2023-06-01';
     } else {
       // openai, deepseek, openrouter, custom
       if (!prov.baseUrl) return false;
-      const base = prov.baseUrl.replace(/\/$/, '');
-      const path = base.includes('/v1') ? '/models' : '/v1/models';
-      url = `${corsPrefix}${base}${path}`;
+      url = `${corsPrefix}${buildApiUrl(prov.baseUrl, 'v1', 'models')}`;
       if (prov.apiKey) {
         headers['Authorization'] = `Bearer ${prov.apiKey}`;
       }
@@ -679,21 +750,19 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     if (providerId === 'gemini') {
       if (!prov.apiKey) throw new Error('APIキーが入力されていません。');
-      url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models`;
+      url = `${corsPrefix}${buildApiUrl(prov.baseUrl || 'https://generativelanguage.googleapis.com', 'v1beta', 'models')}`;
       headers['x-goog-api-key'] = prov.apiKey;
     } else if (providerId === 'ollama') {
       url = `${corsPrefix}${prov.baseUrl.replace(/\/$/, '')}/api/tags`;
     } else if (providerId === 'claude') {
       if (!prov.apiKey) throw new Error('APIキーが入力されていません。');
-      url = `${corsPrefix}https://api.anthropic.com/v1/models`;
+      url = `${corsPrefix}${buildApiUrl(prov.baseUrl || 'https://api.anthropic.com', 'v1', 'models')}`;
       headers['x-api-key'] = prov.apiKey;
       headers['anthropic-version'] = '2023-06-01';
     } else {
       // openai, deepseek, openrouter, custom
       if (!prov.baseUrl) throw new Error('ベースURLが入力されていません。');
-      const base = prov.baseUrl.replace(/\/$/, '');
-      const path = base.includes('/v1') ? '/models' : '/v1/models';
-      url = `${corsPrefix}${base}${path}`;
+      url = `${corsPrefix}${buildApiUrl(prov.baseUrl, 'v1', 'models')}`;
       if (prov.apiKey) {
         headers['Authorization'] = `Bearer ${prov.apiKey}`;
       }
@@ -849,8 +918,14 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   deleteChat: async (chatId) => {
-    await db.chats.delete(chatId);
-    await db.messages.where('chatId').equals(chatId).delete();
+    if (get().generationChatId === chatId) {
+      get().abortController?.abort();
+      set({ isGenerating: false, abortController: null, generationId: null, generationChatId: null });
+    }
+    await db.transaction('rw', [db.chats, db.messages], async () => {
+      await db.chats.delete(chatId);
+      await db.messages.where('chatId').equals(chatId).delete();
+    });
     
     await get().loadChats();
     
@@ -870,12 +945,17 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   clearAllChats: async () => {
-    await db.chats.clear();
-    await db.messages.clear();
+    get().abortController?.abort();
+    set({ isGenerating: false, abortController: null, generationId: null, generationChatId: null });
+    await db.transaction('rw', [db.chats, db.messages], async () => {
+      await db.chats.clear();
+      await db.messages.clear();
+    });
     set({ chats: [], messages: [], activeChatId: null });
   },
 
   sendMessage: async (content, attachments = []) => {
+    if (get().isGenerating) return;
     let chatId = get().activeChatId;
     if (!chatId) {
       chatId = await get().createChat();
@@ -1226,7 +1306,6 @@ export const useChatStore = create<ChatState>((set, get) => {
     if (controller) {
       controller.abort();
     }
-    set({ isGenerating: false, abortController: null, generationId: null });
   },
 
   toggleSidebar: async () => {
@@ -1259,8 +1338,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     const results: SearchResult[] = [];
     // Use a cursor via .each() to avoid materialising the entire messages table
     // into memory at once. Early-exit once the 100-result cap is reached.
-    await db.messages.each((m) => {
-      if (results.length >= 100) return;
+    await db.messages.toCollection().until(() => results.length >= 100).each((m) => {
       const content = getSearchableMessageText(m);
       const idx = content.toLowerCase().indexOf(q);
       if (idx === -1) return;
@@ -1321,42 +1399,53 @@ export const useChatStore = create<ChatState>((set, get) => {
   persistProviders: async () => {
     const { providers, keyEncryptionEnabled, sessionPassphrase } = get();
 
-    if (keyEncryptionEnabled && sessionPassphrase) {
-      // Store providers without plaintext keys, and the keys in an encrypted blob.
-      const keyMap: Record<string, string> = {};
-      const stripped: Record<string, ProviderConfig> = {};
-      for (const [id, p] of Object.entries(providers)) {
-        keyMap[id] = p.apiKey || '';
-        stripped[id] = { ...p, apiKey: '' };
+    if (keyEncryptionEnabled) {
+      const stripped = stripProviderKeys(providers);
+      if (sessionPassphrase) {
+        const keyMap = Object.fromEntries(Object.entries(providers).map(([id, p]) => [id, p.apiKey || '']));
+        const blob = await encryptString(JSON.stringify(keyMap), sessionPassphrase);
+        await db.transaction('rw', db.settings, async () => {
+          await db.settings.put({ key: 'providers', value: stripped });
+          await db.settings.put({ key: 'encryptedKeys', value: blob });
+        });
+      } else {
+        await db.settings.put({ key: 'providers', value: stripped });
       }
-      const blob = await encryptString(JSON.stringify(keyMap), sessionPassphrase);
-      await db.settings.put({ key: 'providers', value: stripped });
-      await db.settings.put({ key: 'encryptedKeys', value: blob });
-    } else {
-      await db.settings.put({ key: 'providers', value: providers });
+      return;
     }
+    await db.settings.put({ key: 'providers', value: providers });
   },
 
   enableKeyEncryption: async (passphrase) => {
     if (!passphrase) return;
-    set({ keyEncryptionEnabled: true, sessionPassphrase: passphrase, keysLocked: false });
-    await db.settings.put({ key: 'keyEncryptionEnabled', value: true });
-    await get().persistProviders(); // writes encrypted blob + stripped providers
+    const providers = get().providers;
+    const keyMap = Object.fromEntries(Object.entries(providers).map(([id, provider]) => [id, provider.apiKey || '']));
+    const blob = await encryptString(JSON.stringify(keyMap), passphrase);
+    const stripped = stripProviderKeys(providers);
+    await db.transaction('rw', db.settings, async () => {
+      await db.settings.put({ key: 'keyEncryptionEnabled', value: true });
+      await db.settings.put({ key: 'providers', value: stripped });
+      await db.settings.put({ key: 'encryptedKeys', value: blob });
+    });
+    set({ keyEncryptionEnabled: true, sessionPassphrase: passphrase, keysLocked: false, unlockPromptOpen: false });
   },
 
   disableKeyEncryption: async () => {
     // Requires keys to be unlocked so we can write them back as plaintext.
     if (get().keysLocked) return;
-    set({ keyEncryptionEnabled: false, sessionPassphrase: null, keysLocked: false });
-    await db.settings.put({ key: 'keyEncryptionEnabled', value: false });
-    await db.settings.delete('encryptedKeys');
-    await get().persistProviders(); // writes plaintext providers
+    const providers = get().providers;
+    await db.transaction('rw', db.settings, async () => {
+      await db.settings.put({ key: 'keyEncryptionEnabled', value: false });
+      await db.settings.delete('encryptedKeys');
+      await db.settings.put({ key: 'providers', value: providers });
+    });
+    set({ keyEncryptionEnabled: false, sessionPassphrase: null, keysLocked: false, unlockPromptOpen: false });
   },
 
   unlockKeys: async (passphrase) => {
     const blob = (await db.settings.get('encryptedKeys'))?.value as EncryptedPayload | undefined;
     if (!blob) {
-      set({ keysLocked: false });
+      set({ keysLocked: false, unlockPromptOpen: false });
       return true;
     }
     try {
@@ -1366,11 +1455,15 @@ export const useChatStore = create<ChatState>((set, get) => {
       for (const [id, key] of Object.entries(keyMap)) {
         if (providers[id]) providers[id] = { ...providers[id], apiKey: key };
       }
-      set({ providers, keysLocked: false, sessionPassphrase: passphrase });
+      set({ providers, keysLocked: false, unlockPromptOpen: false, sessionPassphrase: passphrase });
       return true;
     } catch {
       return false; // wrong passphrase (AES-GCM auth failure)
     }
+  },
+  dismissUnlockPrompt: () => set({ unlockPromptOpen: false }),
+  openUnlockPrompt: () => {
+    if (get().keysLocked) set({ unlockPromptOpen: true });
   },
   });
 });

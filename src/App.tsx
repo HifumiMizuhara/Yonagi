@@ -11,6 +11,7 @@ const App: React.FC = () => {
   const settingsOpen = useChatStore((state) => state.settingsOpen);
   const searchOpen = useChatStore((state) => state.searchOpen);
   const keysLocked = useChatStore((state) => state.keysLocked);
+  const unlockPromptOpen = useChatStore((state) => state.unlockPromptOpen);
   const setSettingsOpen = useChatStore((state) => state.setSettingsOpen);
   const setSearchOpen = useChatStore((state) => state.setSearchOpen);
 
@@ -19,7 +20,7 @@ const App: React.FC = () => {
   }, [init]);
 
   return (
-    <div className="flex h-screen w-screen overflow-hidden bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100 font-sans antialiased">
+    <div className="flex h-dvh w-screen overflow-hidden bg-bg-light dark:bg-bg-dark text-gray-800 dark:text-gray-100 font-sans antialiased">
       {/* Sidebar history panel */}
       <Sidebar />
 
@@ -37,7 +38,7 @@ const App: React.FC = () => {
       )}
 
       {/* API key unlock prompt on startup */}
-      {keysLocked && <UnlockModal />}
+      {keysLocked && unlockPromptOpen && <UnlockModal />}
     </div>
   );
 };

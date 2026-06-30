@@ -11,7 +11,8 @@ const FOCUSABLE_SELECTOR = [
 
 export function useDialogAccessibility(
   dialogRef: RefObject<HTMLElement | null>,
-  onClose?: () => void
+  onClose?: () => void,
+  active = true
 ) {
   const onCloseRef = useRef(onClose);
 
@@ -20,15 +21,22 @@ export function useDialogAccessibility(
   }, [onClose]);
 
   useEffect(() => {
+    if (!active) return;
     const dialog = dialogRef.current;
     if (!dialog) return;
 
     const previousActiveElement = document.activeElement as HTMLElement | null;
-    const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+    const getFocusable = () => Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR))
+      .filter((element) => element.getClientRects().length > 0 && element.getAttribute('aria-hidden') !== 'true');
+    const focusable = getFocusable();
     const initialFocus = focusable[0] || dialog;
     initialFocus.focus();
 
     const handleKeyDown = (event: KeyboardEvent) => {
+      const modalDialogs = Array.from(document.querySelectorAll<HTMLElement>('[aria-modal="true"]'))
+        .filter((element) => element.getClientRects().length > 0);
+      if (modalDialogs[modalDialogs.length - 1] !== dialog) return;
+
       if (event.key === 'Escape' && onCloseRef.current) {
         event.preventDefault();
         onCloseRef.current();
@@ -37,7 +45,7 @@ export function useDialogAccessibility(
 
       if (event.key !== 'Tab') return;
 
-      const currentFocusable = Array.from(dialog.querySelectorAll<HTMLElement>(FOCUSABLE_SELECTOR));
+      const currentFocusable = getFocusable();
       if (currentFocusable.length === 0) {
         event.preventDefault();
         dialog.focus();
@@ -60,5 +68,5 @@ export function useDialogAccessibility(
       document.removeEventListener('keydown', handleKeyDown);
       previousActiveElement?.focus();
     };
-  }, [dialogRef]);
+  }, [active, dialogRef]);
 }

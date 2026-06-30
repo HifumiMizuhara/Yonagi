@@ -9,13 +9,16 @@ interface SearchModalProps {
 }
 
 export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
-  const store = useChatStore();
+  const searchMessages = useChatStore((state) => state.searchMessages);
+  const selectChat = useChatStore((state) => state.selectChat);
+  const setScrollTargetMessageId = useChatStore((state) => state.setScrollTargetMessageId);
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
+  const requestIdRef = useRef(0);
   useDialogAccessibility(dialogRef, onClose);
 
   useEffect(() => {
@@ -26,19 +29,23 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
   const displayResults = query.trim() ? results : [];
 
   useEffect(() => {
+    const requestId = ++requestIdRef.current;
+    if (!query.trim()) return;
     const handle = setTimeout(async () => {
-      if (!query.trim()) return;
       setLoading(true);
-      const res = await store.searchMessages(query);
-      setResults(res);
-      setLoading(false);
+      try {
+        const res = await searchMessages(query);
+        if (requestIdRef.current === requestId) setResults(res);
+      } finally {
+        if (requestIdRef.current === requestId) setLoading(false);
+      }
     }, 200);
     return () => clearTimeout(handle);
-  }, [query, store]);
+  }, [query, searchMessages]);
 
   const handleSelect = async (chatId: string, messageId: string) => {
-    await store.selectChat(chatId);
-    store.setScrollTargetMessageId(messageId);
+    await selectChat(chatId);
+    setScrollTargetMessageId(messageId);
     onClose();
   };
 
@@ -80,7 +87,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
             ref={inputRef}
             type="text"
             value={query}
-            onChange={(e) => setQuery(e.target.value)}
+            onChange={(e) => {
+              const value = e.target.value;
+              setQuery(value);
+              if (!value.trim()) {
+                requestIdRef.current += 1;
+                setLoading(false);
+                setResults([]);
+              }
+            }}
             placeholder={t.searchPlaceholder}
             aria-label={t.searchPlaceholder}
             className="flex-1 mx-3 bg-transparent focus:outline-none text-sm text-gray-900 dark:text-gray-100 placeholder-gray-400"
@@ -88,7 +103,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
           <button
             onClick={onClose}
             aria-label={t.close}
-            className="p-1.5 hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer transition-colors shrink-0"
+            className="min-w-11 min-h-11 flex items-center justify-center hover:bg-gray-100 dark:hover:bg-gray-800 rounded-lg text-gray-400 hover:text-gray-600 dark:hover:text-gray-200 cursor-pointer transition-colors shrink-0"
           >
             <X className="w-4.5 h-4.5" />
           </button>

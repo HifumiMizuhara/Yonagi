@@ -15,7 +15,7 @@ export const UnlockModal: React.FC = () => {
   const [busy, setBusy] = useState(false);
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
-  const skipUnlock = () => useChatStore.setState({ keysLocked: false });
+  const skipUnlock = store.dismissUnlockPrompt;
   useDialogAccessibility(dialogRef, skipUnlock);
 
   useEffect(() => { inputRef.current?.focus(); }, []);
@@ -65,20 +65,20 @@ export const UnlockModal: React.FC = () => {
         </div>
 
         {error && (
-          <p className="text-xs text-red-500 font-semibold text-center -mt-2">{t.wrongPassphrase}</p>
+          <p role="alert" className="text-xs text-red-500 font-semibold text-center -mt-2">{t.wrongPassphrase}</p>
         )}
 
         <div className="flex space-x-2">
           <button
             onClick={handleUnlock}
             disabled={busy || !passphrase}
-            className="flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold cursor-pointer transition-colors shadow-sm"
+            className="min-h-11 flex-1 py-2.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl text-sm font-bold cursor-pointer transition-colors shadow-sm"
           >
             {t.unlock}
           </button>
           <button
 	            onClick={skipUnlock}
-            className="px-4 py-2.5 bg-gray-150 dark:bg-card-dark text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold cursor-pointer transition-colors"
+            className="min-h-11 px-4 py-2.5 bg-gray-100 dark:bg-card-dark text-gray-700 dark:text-gray-300 rounded-xl text-sm font-bold cursor-pointer transition-colors"
           >
             {t.skipUnlock}
           </button>

@@ -3,14 +3,44 @@ import pdfWorkerUrl from 'pdfjs-dist/build/pdf.worker.min.mjs?url';
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = pdfWorkerUrl;
 
+export const MAX_ATTACHMENT_COUNT = 8;
+export const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+export const MAX_TOTAL_ATTACHMENT_BYTES = 20 * 1024 * 1024;
+export const MAX_EXTRACTED_TEXT_CHARS = 300_000;
+export const MAX_PDF_PAGES = 100;
+
+export type FileParseErrorCode =
+  | 'fileTooLarge'
+  | 'pdfTooManyPages'
+  | 'extractedTextTooLarge'
+  | 'pdfParseFailed'
+  | 'textReadFailed'
+  | 'imageReadFailed';
+
+export class FileParseError extends Error {
+  code: FileParseErrorCode;
+
+  constructor(code: FileParseErrorCode, options?: ErrorOptions) {
+    super(code, options);
+    this.name = 'FileParseError';
+    this.code = code;
+  }
+}
+
+function assertFileSize(file: File) {
+  if (file.size > MAX_FILE_SIZE_BYTES) throw new FileParseError('fileTooLarge');
+}
+
 /**
  * Extracts plain text from a PDF file locally in the browser
  */
 export async function extractTextFromPdf(file: File): Promise<string> {
+  assertFileSize(file);
   try {
     const arrayBuffer = await file.arrayBuffer();
     const loadingTask = pdfjsLib.getDocument({ data: arrayBuffer });
     const pdf = await loadingTask.promise;
+    if (pdf.numPages > MAX_PDF_PAGES) throw new FileParseError('pdfTooManyPages');
     let fullText = '';
 
     for (let i = 1; i <= pdf.numPages; i++) {
@@ -20,12 +50,16 @@ export async function extractTextFromPdf(file: File): Promise<string> {
         .map((item) => ('str' in item ? (item as { str: string }).str : ''))
         .join(' ');
       fullText += `[Page ${i}]\n${pageText}\n\n`;
+      if (fullText.length > MAX_EXTRACTED_TEXT_CHARS) {
+        throw new FileParseError('extractedTextTooLarge');
+      }
     }
 
     return fullText.trim();
   } catch (error) {
+    if (error instanceof FileParseError) throw error;
     console.error('Failed to extract PDF text:', error);
-    throw new Error('PDFのテキスト解析に失敗しました。ファイルが壊れているか、保護されている可能性があります。', { cause: error });
+    throw new FileParseError('pdfParseFailed', { cause: error });
   }
 }
 
@@ -35,12 +69,14 @@ export async function extractTextFromPdf(file: File): Promise<string> {
  * as structured data instead of a raw comma soup.
  */
 export async function readFileAsText(file: File): Promise<string> {
+  assertFileSize(file);
   const raw = await new Promise<string>((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('テキストファイルの読み込みに失敗しました。'));
+    reader.onerror = () => reject(new FileParseError('textReadFailed'));
     reader.readAsText(file);
   });
+  if (raw.length > MAX_EXTRACTED_TEXT_CHARS) throw new FileParseError('extractedTextTooLarge');
 
   const name = file.name.toLowerCase();
   if (name.endsWith('.csv') || name.endsWith('.tsv')) {
@@ -105,10 +141,11 @@ function parseDelimited(text: string, delimiter: string): string[][] {
  * Reads a file as a Base64 Data URL (used for image previews and API multimodal payloads)
  */
 export function readFileAsBase64(file: File): Promise<string> {
+  assertFileSize(file);
   return new Promise((resolve, reject) => {
     const reader = new FileReader();
     reader.onload = () => resolve(reader.result as string);
-    reader.onerror = () => reject(new Error('画像の読み込みに失敗しました。'));
+    reader.onerror = () => reject(new FileParseError('imageReadFailed'));
     reader.readAsDataURL(file);
   });
 }

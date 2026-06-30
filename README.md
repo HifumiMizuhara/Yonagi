@@ -92,6 +92,7 @@ Open the printed local URL (default `http://localhost:5173`).
 |---------|-------------|
 | `npm run dev` | Start the Vite dev server with HMR |
 | `npm run build` | Type-check (`tsc -b`) and build for production |
+| `npm test` | Run compatibility, encryption, and token regression tests |
 | `npm run deploy` | Build and publish `dist/` to the `gh-pages` branch |
 | `npm run preview` | Preview the production build locally |
 | `npm run lint` | Run ESLint over the project |

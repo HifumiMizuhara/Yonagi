@@ -1,4 +1,12 @@
 import { type ProviderConfig } from './db';
+import {
+  buildApiUrl,
+  getClaudeThinkingConfig,
+  getGeminiThinkingConfig,
+  normalizeOpenAiEffort,
+  parseSseDataLine,
+  supportsOpenAiReasoning,
+} from '../utils/providerCompatibility';
 
 export type ApiErrorCode =
   | 'providerDisabled'
@@ -140,11 +148,6 @@ function supportsOpenAiWebSearchModel(modelId: string) {
   return modelId.toLowerCase().includes('search');
 }
 
-function supportsOpenAiReasoning(modelId: string) {
-  const lower = modelId.toLowerCase();
-  return lower.startsWith('o') || lower.includes('gpt-5') || lower.includes('reason');
-}
-
 /**
  * Entrypoint for streaming AI response.
  */
@@ -177,22 +180,14 @@ export async function streamChatCompletion(
       throw new ApiError('missingGeminiApiKey', 'Gemini API key is missing.');
     }
 
-    // Fix #15: pass API key in header (not URL) so it is not exposed to CORS proxies
-    url = `${corsPrefix}https://generativelanguage.googleapis.com/v1beta/models/${modelId}:streamGenerateContent`;
+    // Keep credentials out of the URL and browser history. A configured proxy can still read headers.
+    const base = providerConfig.baseUrl || 'https://generativelanguage.googleapis.com';
+    url = `${corsPrefix}${buildApiUrl(base, 'v1beta', `models/${encodeURIComponent(modelId)}:streamGenerateContent`)}?alt=sse`;
     headers['x-goog-api-key'] = providerConfig.apiKey;
 
     const formattedMessages = prepareContext(params, 'gemini');
 
-    // Map app effort levels to Gemini thinkingLevel enum (low/medium/high).
-    // 'minimal' and 'xhigh' are clamped to the nearest supported value.
-    const effortToThinkingLevel: Record<string, string> = {
-      minimal: 'low',
-      low: 'low',
-      medium: 'medium',
-      high: 'high',
-      xhigh: 'high',
-    };
-    const thinkingLevel = params.effort ? effortToThinkingLevel[params.effort.toLowerCase()] : undefined;
+    const thinkingConfig = getGeminiThinkingConfig(modelId, params.effort);
 
     body = {
       contents: formattedMessages,
@@ -201,7 +196,7 @@ export async function streamChatCompletion(
       } : undefined,
       generationConfig: {
         temperature: params.temperature,
-        ...(thinkingLevel ? { thinkingLevel } : {}),
+        ...(thinkingConfig ? { thinkingConfig } : {}),
       },
     };
 
@@ -215,7 +210,8 @@ export async function streamChatCompletion(
       throw new ApiError('missingClaudeApiKey', 'Claude API key is missing.');
     }
 
-    const targetUrl = 'https://api.anthropic.com/v1/messages';
+    const base = providerConfig.baseUrl || 'https://api.anthropic.com';
+    const targetUrl = buildApiUrl(base, 'v1', 'messages');
     url = corsPrefix ? `${corsPrefix}${targetUrl}` : targetUrl;
 
     headers['x-api-key'] = providerConfig.apiKey;
@@ -223,23 +219,19 @@ export async function streamChatCompletion(
 
     const messagesWithoutSystem = prepareContext(params, 'claude').filter(m => m.role !== 'system');
 
+    const claudeThinking = getClaudeThinkingConfig(modelId, params.effort);
     body = {
       model: modelId,
       messages: messagesWithoutSystem,
       system: params.systemPrompt || undefined,
-      max_tokens: 4096,
+      max_tokens: claudeThinking.maxTokens,
       stream: true,
+      ...(claudeThinking.thinking ? { thinking: claudeThinking.thinking } : {}),
+      ...(claudeThinking.outputConfig ? { output_config: claudeThinking.outputConfig } : {}),
     };
 
-    // Fix #3: use correct extended thinking API (type:'enabled', budget_tokens, anthropic-beta header)
-    if (params.effort && params.effort !== 'none') {
-      const budgetMap: Record<string, number> = { low: 2000, medium: 8000, high: 16000, xhigh: 32000, max: 60000 };
-      const budgetTokens = budgetMap[params.effort.toLowerCase()] ?? 8000;
-      body.thinking = { type: 'enabled', budget_tokens: budgetTokens };
+    if (claudeThinking.thinking?.type === 'enabled' && params.webSearch) {
       headers['anthropic-beta'] = 'interleaved-thinking-2025-05-14';
-      body.temperature = 1.0;
-    } else {
-      body.temperature = params.temperature;
     }
 
     // Built-in web search tool
@@ -271,9 +263,7 @@ export async function streamChatCompletion(
       throw new ApiError('missingBaseUrl', 'Provider base URL is missing.', { name: providerConfig.name });
     }
 
-    const base = providerConfig.baseUrl.replace(/\/$/, '');
-    const path = base.includes('/v1') ? '/chat/completions' : '/v1/chat/completions';
-    url = `${corsPrefix}${base}${path}`;
+    url = `${corsPrefix}${buildApiUrl(providerConfig.baseUrl, 'v1', 'chat/completions')}`;
 
     if (providerConfig.apiKey) {
       headers['Authorization'] = `Bearer ${providerConfig.apiKey}`;
@@ -287,14 +277,17 @@ export async function streamChatCompletion(
     body = {
       model: modelId,
       messages: formattedMessages,
-      temperature: params.temperature,
       stream: true,
       // Request usage stats in the stream (final chunk carries `usage`)
       stream_options: { include_usage: true },
     };
 
+    if (!supportsOpenAiReasoning(modelId)) {
+      body.temperature = params.temperature;
+    }
+
     if (params.effort && params.effort !== 'none' && (providerConfig.id === 'openrouter' || supportsOpenAiReasoning(modelId))) {
-      const effVal = params.effort.toLowerCase();
+      const effVal = normalizeOpenAiEffort(modelId, params.effort);
       if (providerConfig.id === 'openai') {
         body.reasoning_effort = effVal;
       } else {
@@ -366,12 +359,7 @@ export async function streamChatCompletion(
         if (!trimmed) continue;
 
         if (providerConfig.id === 'gemini') {
-          // Fix #9: only strip lines that are SOLELY '[', ']', or ','
-          // Previously, startsWith/endsWith checks corrupted JSON content.
-          let cleanLine = trimmed;
-          if (cleanLine === '[' || cleanLine === ']') continue;
-          if (cleanLine.startsWith(',')) cleanLine = cleanLine.substring(1).trim();
-
+          const cleanLine = parseSseDataLine(trimmed);
           if (!cleanLine) continue;
 
           try {
