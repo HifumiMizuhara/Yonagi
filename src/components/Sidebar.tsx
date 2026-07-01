@@ -9,7 +9,7 @@ import {
 
 export const Sidebar: React.FC = () => {
   const store = useChatStore();
-  const { t, language } = useTranslation();
+  const { t } = useTranslation();
   const [editingId, setEditingId] = useState<string | null>(null);
   const [editTitle, setEditTitle] = useState('');
   const [pendingDeleteChatId, setPendingDeleteChatId] = useState<string | null>(null);
@@ -41,51 +41,30 @@ export const Sidebar: React.FC = () => {
   };
 
   const groupChats = (chats: Chat[]) => {
-    const today: Chat[] = [];
-    const yesterday: Chat[] = [];
-    const last7Days: Chat[] = [];
-    const older: Chat[] = [];
-
     const now = new Date();
     const startOfToday = new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime();
     const startOfYesterday = startOfToday - 24 * 60 * 60 * 1000;
     const startOf7DaysAgo = startOfToday - 7 * 24 * 60 * 60 * 1000;
 
-    chats.forEach((chat) => {
+    const today: Chat[] = [];
+    const yesterday: Chat[] = [];
+    const last7Days: Chat[] = [];
+    const older: Chat[] = [];
+
+    for (const chat of chats) {
       const time = chat.updatedAt;
-      if (time >= startOfToday) {
-        today.push(chat);
-      } else if (time >= startOfYesterday) {
-        yesterday.push(chat);
-      } else if (time >= startOf7DaysAgo) {
-        last7Days.push(chat);
-      } else {
-        older.push(chat);
-      }
-    });
-
-    return {
-      '今日': today,
-      '昨日': yesterday,
-      '過去7日間': last7Days,
-      'それ以前': older,
-    };
-  };
-
-  const getGroupName = (label: string) => {
-    if (language === 'en') {
-      if (label === '今日') return 'Today';
-      if (label === '昨日') return 'Yesterday';
-      if (label === '過去7日間') return 'Last 7 Days';
-      return 'Older';
+      if (time >= startOfToday) today.push(chat);
+      else if (time >= startOfYesterday) yesterday.push(chat);
+      else if (time >= startOf7DaysAgo) last7Days.push(chat);
+      else older.push(chat);
     }
-    if (language === 'zh') {
-      if (label === '今日') return '今天';
-      if (label === '昨日') return '昨天';
-      if (label === '過去7日間') return '过去 7 天';
-      return '更早';
-    }
-    return label;
+
+    return [
+      { label: t.groupToday, items: today },
+      { label: t.groupYesterday, items: yesterday },
+      { label: t.groupLast7Days, items: last7Days },
+      { label: t.groupOlder, items: older },
+    ];
   };
 
   const grouped = groupChats(store.chats);
@@ -213,12 +192,12 @@ export const Sidebar: React.FC = () => {
               <p className="font-medium">{t.noHistory}</p>
             </div>
           ) : (
-            Object.entries(grouped).map(([label, items]) => {
+            grouped.map(({ label, items }) => {
               if (items.length === 0) return null;
               return (
                 <div key={label} className="space-y-0.5">
                   <h4 className="text-[10px] font-bold text-gray-400/60 dark:text-gray-600 uppercase tracking-widest px-3 py-1 select-none">
-                    {getGroupName(label)}
+                    {label}
                   </h4>
                   {items.map((chat) => {
                     const isActive = store.activeChatId === chat.id;

@@ -53,7 +53,7 @@ function isClaudeAdaptiveModel(modelId: string) {
   return /claude-(?:opus-(?:4-[678])|sonnet-4-6|fable-5|mythos)/.test(modelId.toLowerCase());
 }
 
-function claudeSupportsXHigh(modelId: string) {
+export function claudeSupportsXHigh(modelId: string) {
   return /claude-(?:opus-(?:4-[78])|fable-5|mythos)/.test(modelId.toLowerCase());
 }
 

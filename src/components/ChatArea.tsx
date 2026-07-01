@@ -14,6 +14,7 @@ import {
   MAX_TOTAL_ATTACHMENT_BYTES,
 } from '../utils/fileParser';
 import { estimateTokens, computeCost, formatCost, DEFAULT_MODEL_PRICING } from '../utils/tokens';
+import { claudeSupportsXHigh } from '../utils/providerCompatibility';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
@@ -270,7 +271,7 @@ export const ChatArea: React.FC = () => {
     if (activeModel.providerId === 'openai') {
       return modelId.includes('search');
     }
-    return modelId.includes('sonar') || modelId.includes('perplexity');
+    return false;
   })();
 
   const getEffortOptions = () => {
@@ -284,7 +285,7 @@ export const ChatArea: React.FC = () => {
         { value: 'none', label: t.effortNone }
       ];
     } else if (activeModel.providerId === 'claude') {
-      const supportsXHigh = /claude-(?:opus-(?:4-[78])|fable-5|mythos)/.test(activeModel.id.toLowerCase());
+      const supportsXHigh = claudeSupportsXHigh(activeModel.id);
       baseOptions = [
         { value: 'low', label: 'Low' },
         { value: 'medium', label: 'Medium' },
@@ -484,6 +485,7 @@ export const ChatArea: React.FC = () => {
     if (grp.includes('claude') || grp.includes('anthropic')) return 'bg-amber-600';
     if (grp.includes('deepseek')) return 'bg-cyan-500';
     if (grp.includes('ollama')) return 'bg-purple-500';
+    if (grp.includes('openrouter')) return 'bg-violet-500';
     return 'bg-amber-500';
   };
 
@@ -608,7 +610,7 @@ export const ChatArea: React.FC = () => {
                         type="text"
                         value={customEffortValue}
                         onChange={(e) => setCustomEffortValue(e.target.value)}
-                        placeholder="例: low, 1024…"
+                        placeholder={t.effortCustomPlaceholder}
                         className="flex-1 px-2 py-1 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-amber-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
                         autoFocus
                       />
