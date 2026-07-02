@@ -379,7 +379,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         aria-modal="true"
         aria-labelledby="settings-dialog-title"
         tabIndex={-1}
-        className="relative flex flex-col w-full max-w-4xl h-[90vh] md:h-[650px] bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans backdrop-blur-2xl"
+        className="relative flex flex-col w-full max-w-4xl h-[90vh] md:h-[650px] bg-card-light dark:bg-sidebar-dark md:bg-card-light/95 md:dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans md:backdrop-blur-2xl"
       >
         
         {/* Header */}
@@ -401,12 +401,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         <div className="flex flex-1 overflow-hidden">
           
           {/* Main settings tabs (Leftmost strip) */}
-          <div className="w-16 md:w-48 bg-card-light/50 dark:bg-sidebar-dark/30 border-r border-border-light dark:border-border-dark flex flex-col py-4 space-y-1 shrink-0 select-none">
+          <div className="w-14 md:w-48 bg-card-light/50 dark:bg-sidebar-dark/30 border-r border-border-light dark:border-border-dark flex flex-col py-4 space-y-1 shrink-0 select-none overflow-hidden">
             <button
               onClick={() => setActiveTab('connections')}
               aria-label={t.connections}
               aria-pressed={activeTab === 'connections'}
-              className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
+              className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:space-x-2.5 px-1.5 md:px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-[3px] ${
                 activeTab === 'connections'
                   ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
@@ -419,7 +419,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               onClick={() => setActiveTab('prompt')}
               aria-label={t.systemPrompt}
               aria-pressed={activeTab === 'prompt'}
-              className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
+              className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:space-x-2.5 px-1.5 md:px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-[3px] ${
                 activeTab === 'prompt'
                   ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
@@ -432,7 +432,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               onClick={() => setActiveTab('pricing')}
               aria-label={t.pricing}
               aria-pressed={activeTab === 'pricing'}
-              className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
+              className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:space-x-2.5 px-1.5 md:px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-[3px] ${
                 activeTab === 'pricing'
                   ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
@@ -445,7 +445,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               onClick={() => setActiveTab('security')}
               aria-label={t.security}
               aria-pressed={activeTab === 'security'}
-              className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
+              className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:space-x-2.5 px-1.5 md:px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-[3px] ${
                 activeTab === 'security'
                   ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
@@ -458,7 +458,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
               onClick={() => setActiveTab('data')}
               aria-label={t.dataManagement}
               aria-pressed={activeTab === 'data'}
-              className={`flex flex-col md:flex-row items-center md:space-x-2.5 px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-3 ${
+              className={`flex flex-col md:flex-row items-center justify-center md:justify-start w-full md:space-x-2.5 px-1.5 md:px-4 py-3 text-center md:text-left transition-all duration-200 cursor-pointer text-xs md:text-sm font-semibold border-l-[3px] ${
                 activeTab === 'data'
                   ? 'border-blue-600 dark:border-sky-400 bg-card-light/60 dark:bg-card-dark/60 text-blue-600 dark:text-sky-400 font-bold'
                   : 'border-transparent text-gray-500 dark:text-gray-400 hover:bg-card-light/30 dark:hover:bg-card-dark/30 hover:text-gray-900 dark:hover:text-gray-200'
@@ -480,15 +480,17 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 <div className={`${mobileDetailView ? 'hidden md:flex' : 'flex'} w-full md:w-64 border-b md:border-b-0 md:border-r border-border-light dark:border-border-dark flex-col bg-card-light/10 dark:bg-sidebar-dark/10 flex-1 md:flex-none md:h-full select-none`}>
                   
                   {/* Search providers box */}
-                  <div className="p-3.5 border-b border-border-light dark:border-border-dark relative shrink-0">
-                    <input
-                      type="text"
-                      placeholder={t.searchProviders}
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      className="w-full pl-8 pr-3 py-2 bg-card-light dark:bg-sidebar-dark text-xs border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
-                    />
-                    <Search className="absolute left-5.5 top-[23px] w-3.5 h-3.5 text-gray-400" />
+                  <div className="p-3.5 border-b border-border-light dark:border-border-dark shrink-0">
+                    <div className="relative">
+                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-gray-400 pointer-events-none" />
+                      <input
+                        type="text"
+                        placeholder={t.searchProviders}
+                        value={searchQuery}
+                        onChange={(e) => setSearchQuery(e.target.value)}
+                        className="w-full pl-9 pr-3 py-2 bg-card-light dark:bg-sidebar-dark text-xs border border-border-light dark:border-border-dark rounded-xl focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                      />
+                    </div>
                   </div>
 
                   {/* Scrollable list of providers */}
@@ -500,9 +502,9 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                       return (
                         <div
                           key={p.id}
-                          className={`group flex items-center justify-between w-full rounded-xl text-xs font-semibold transition-all ${
+                          className={`group flex items-center justify-between w-full rounded-xl text-xs font-semibold transition-all overflow-hidden ${
                             isSelected
-                              ? 'bg-card-light dark:bg-card-dark text-blue-600 dark:text-sky-400 shadow-sm border-l-2 border-blue-600 dark:border-sky-400'
+                              ? 'bg-card-light dark:bg-card-dark text-blue-600 dark:text-sky-400 shadow-sm'
                               : 'text-gray-600 dark:text-gray-400 hover:bg-card-light/40 dark:hover:bg-card-dark/40 hover:text-gray-950 dark:hover:text-gray-100'
                           }`}
                         >
@@ -515,7 +517,11 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                               setFetchError(null);
                               setMobileDetailView(true);
                             }}
-                            className="min-h-11 flex flex-1 items-center space-x-2 min-w-0 px-3 py-2.5 text-left cursor-pointer rounded-xl focus-visible:outline-2 focus-visible:outline-blue-500"
+                            className={`min-h-11 flex flex-1 items-center gap-2 min-w-0 py-2.5 text-left cursor-pointer rounded-xl focus-visible:outline-2 focus-visible:outline-blue-500 border-l-[3px] pl-3 pr-3 ${
+                              isSelected
+                                ? 'border-blue-600 dark:border-sky-400'
+                                : 'border-transparent'
+                            }`}
                           >
                             <ModelIcon
                               providerId={p.id}

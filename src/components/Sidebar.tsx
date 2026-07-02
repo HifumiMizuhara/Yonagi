@@ -124,7 +124,7 @@ export const Sidebar: React.FC = () => {
     return (
       <div
         key={chat.id}
-        className={`group relative flex items-center w-full min-h-11 rounded-xl text-xs transition-all duration-150 ${
+        className={`group relative flex items-center w-full min-h-11 rounded-xl text-xs transition-all duration-150 overflow-hidden ${
           isActive
             ? 'bg-white/90 dark:bg-white/6 text-blue-700 dark:text-sky-300 font-semibold shadow-sm'
             : 'text-gray-600 dark:text-gray-400 hover:bg-white/70 dark:hover:bg-white/4 hover:text-gray-900 dark:hover:text-gray-100'
@@ -150,7 +150,7 @@ export const Sidebar: React.FC = () => {
             type="button"
             onClick={() => handleSelectChat(chat.id)}
             aria-current={isActive ? 'page' : undefined}
-            className="min-h-11 w-full flex items-center px-3 pr-28 rounded-xl text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-500"
+            className="min-h-11 w-full flex items-center px-3 pr-[6.75rem] md:pr-28 rounded-xl text-left cursor-pointer focus-visible:outline-2 focus-visible:outline-blue-500"
           >
             <MessageSquare className={`w-3.5 h-3.5 mr-2.5 shrink-0 transition-colors ${
               isActive ? 'text-blue-500 dark:text-sky-400' : 'text-gray-400 dark:text-gray-600 group-hover:text-gray-500'
@@ -165,25 +165,25 @@ export const Sidebar: React.FC = () => {
         )}
 
         {!isEditing && (
-          <div className="hover-action absolute right-1.5 flex space-x-0 transition-opacity duration-150">
+          <div className="hover-action absolute right-2 inset-y-0 flex items-center space-x-0 transition-opacity duration-150">
             <button
               onClick={(e) => { e.stopPropagation(); setFolderMenuChatId(showFolderMenu ? null : chat.id); }}
               aria-label={t.moveToFolder}
-              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+              className="min-w-8 min-h-8 md:min-w-9 md:min-h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
             >
               <MoreHorizontal className="w-3 h-3" />
             </button>
             <button
               onClick={(e) => handleStartRename(chat, e)}
               aria-label={t.rename}
-              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+              className="min-w-8 min-h-8 md:min-w-9 md:min-h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
             >
               <Edit2 className="w-3 h-3" />
             </button>
             <button
               onClick={(e) => handleDeleteChat(chat.id, e)}
               aria-label={t.delete}
-              className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+              className="min-w-8 min-h-8 md:min-w-9 md:min-h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
             >
               <Trash2 className="w-3 h-3" />
             </button>
@@ -346,24 +346,24 @@ export const Sidebar: React.FC = () => {
       {/* Mobile overlay backdrop */}
       <div onClick={store.toggleSidebar} className="md:hidden fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-40" />
 
-      <div className="fixed md:relative inset-y-0 left-0 w-72 max-w-[84vw] h-full md:h-auto md:rounded-[2rem] bg-sidebar-light/92 dark:bg-sidebar-dark/88 backdrop-blur-2xl border border-white/60 dark:border-white/8 md:shadow-[0_16px_40px_rgba(148,163,184,0.16)] md:dark:shadow-[0_20px_50px_rgba(0,0,0,0.35)] flex flex-col z-50 md:z-40">
+      <div className="fixed md:relative inset-y-0 left-0 w-72 max-w-[84vw] h-full md:h-auto md:rounded-[2rem] bg-sidebar-light dark:bg-sidebar-dark md:bg-sidebar-light/92 md:dark:bg-sidebar-dark/88 md:backdrop-blur-2xl border border-white/60 dark:border-white/8 md:shadow-[0_16px_40px_rgba(148,163,184,0.16)] md:dark:shadow-[0_20px_50px_rgba(0,0,0,0.35)] flex flex-col z-50 md:z-40 overflow-hidden">
 
         {/* Sidebar Header */}
-        <div className="flex items-center justify-between px-4 py-4 border-b border-border-light/50 dark:border-border-dark/60 select-none shrink-0">
-          <div className="flex items-center space-x-2.5">
+        <div className="flex items-center justify-between gap-1 px-3 md:px-4 py-3 md:py-4 border-b border-border-light/50 dark:border-border-dark/60 select-none shrink-0 min-w-0">
+          <div className="flex items-center space-x-2 min-w-0 shrink">
             <div className="relative w-8 h-8 flex items-center justify-center bg-gradient-to-tr from-blue-500 via-violet-500 to-sky-400 rounded-xl shadow-sm shadow-blue-500/25 border border-white/40">
               <svg viewBox="0 0 24 24" className="w-3.5 h-3.5 text-white fill-current" xmlns="http://www.w3.org/2000/svg">
                 <path d="M12 2.25a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0V3a.75.75 0 0 1 .75-.75ZM12 16.5a4.5 4.5 0 1 0 0-9 4.5 4.5 0 0 0 0 9Zm0 1.5a.75.75 0 0 1 .75.75v1.5a.75.75 0 0 1-1.5 0v-1.5a.75.75 0 0 1 .75-.75ZM5.106 5.106a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06Zm11.668 11.668a.75.75 0 0 1 1.06 0l1.06 1.06a.75.75 0 0 1-1.06 1.06l-1.06-1.06a.75.75 0 0 1 0-1.06ZM2.25 12a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5H3a.75.75 0 0 1-.75-.75Zm15.5 0a.75.75 0 0 1 .75-.75h1.5a.75.75 0 0 1 0 1.5h-1.5a.75.75 0 0 1-.75-.75ZM5.106 18.894a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Zm11.668-11.668a.75.75 0 0 1 0-1.06l1.06-1.06a.75.75 0 1 1 1.06 1.06l-1.06 1.06a.75.75 0 0 1-1.06 0Z" />
               </svg>
             </div>
-            <span className="font-bold text-gray-900 dark:text-gray-50 text-sm tracking-wide font-heading">Himawari</span>
+            <span className="font-bold text-gray-900 dark:text-gray-50 text-sm tracking-wide font-heading truncate">Himawari</span>
           </div>
 
-          <div className="flex items-center space-x-0.5">
+          <div className="flex items-center shrink-0 -mr-1 md:mr-0">
             <button
               onClick={() => store.setSettingsOpen(true)}
               aria-label={t.settings}
-              className="min-w-11 min-h-11 md:hidden flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
+              className="min-w-9 min-h-9 md:min-w-11 md:min-h-11 md:hidden flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
               title={t.settings}
             >
               <Settings className="w-4 h-4" />
@@ -371,7 +371,7 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={() => store.setSearchOpen(true)}
               aria-label={t.search}
-              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
+              className="min-w-9 min-h-9 md:min-w-11 md:min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
               title={t.search}
             >
               <Search className="w-4 h-4" />
@@ -379,7 +379,7 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={handleNewChat}
               aria-label={t.newChat}
-              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
+              className="min-w-9 min-h-9 md:min-w-11 md:min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
               title={t.newChat}
             >
               <Plus className="w-4 h-4" />
@@ -387,7 +387,7 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={store.toggleSidebar}
               aria-label={t.close}
-              className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
+              className="min-w-9 min-h-9 md:min-w-11 md:min-h-11 flex items-center justify-center text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/6 rounded-xl cursor-pointer transition-colors"
               title={t.close}
             >
               <PanelLeftClose className="w-4 h-4" />
@@ -396,7 +396,7 @@ export const Sidebar: React.FC = () => {
         </div>
 
         {/* Scrollable chat list */}
-        <div className="flex-1 overflow-y-auto px-2.5 pt-3 pb-3 space-y-3">
+        <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 md:px-2.5 pt-3 pb-3 space-y-3">
           {/* Folder creation input */}
           {creatingFolder && (
             <div className="flex items-center gap-1 px-2 py-1">
