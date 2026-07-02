@@ -1,14 +1,20 @@
-import React, { useRef, useState } from 'react';
+import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { useChatStore } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
 import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import { db } from '../services/db';
 import {
   X, Shield, Settings, Database, Eye, EyeOff, Check, AlertCircle, Search,
-  Trash2, Plus, RefreshCw, Globe, Key, HelpCircle, DollarSign, Lock, Save, FileText, ChevronLeft
+  Trash2, Plus, RefreshCw, Globe, Key, HelpCircle, DollarSign, Lock, Save, FileText, ChevronLeft, HardDrive
 } from 'lucide-react';
 import type { ModelPrice } from '../services/db';
 import { EXPORT_VERSION, validateImportData } from '../utils/importExport';
+import { isQuotaExceededError, runDbWrite } from '../utils/dbWrite';
+import {
+  computeStorageSummary,
+  type StorageSummary,
+} from '../utils/storageStats';
+import { formatBytes, formatPercent } from '../utils/storageSize';
 
 interface SettingsModalProps {
   onClose: () => void;
@@ -59,6 +65,24 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [encPass, setEncPass] = useState('');
   const [encPass2, setEncPass2] = useState('');
   const [encError, setEncError] = useState<string | null>(null);
+
+  const [storageSummary, setStorageSummary] = useState<StorageSummary | null>(null);
+  const [storageLoading, setStorageLoading] = useState(false);
+
+  const refreshStorage = useCallback(async () => {
+    setStorageLoading(true);
+    try {
+      setStorageSummary(await computeStorageSummary());
+    } finally {
+      setStorageLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeTab === 'data') {
+      void refreshStorage();
+    }
+  }, [activeTab, refreshStorage]);
 
   const handleSavePreset = async () => {
     if (!newPresetName.trim() || !newPresetContent.trim()) return;
@@ -289,14 +313,23 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             return;
           }
           const { chats, messages, folders } = validation.data;
-          await db.transaction('rw', [db.chats, db.messages, db.folders], async () => {
-            for (const chat of chats) await db.chats.put(chat);
-            for (const message of messages) await db.messages.put(message);
-            for (const folder of folders) await db.folders.put(folder);
-          });
+          try {
+            await runDbWrite(() => db.transaction('rw', [db.chats, db.messages, db.folders], async () => {
+              for (const chat of chats) await db.chats.put(chat);
+              for (const message of messages) await db.messages.put(message);
+              for (const folder of folders) await db.folders.put(folder);
+            }));
+          } catch (error) {
+            if (isQuotaExceededError(error)) {
+              useChatStore.setState({ storageNotice: t.storageQuotaError });
+            }
+            setNotice(t.fileLoadError);
+            return;
+          }
           await store.loadChats();
           await store.loadFolders();
           setNotice(t.importSuccess);
+          await refreshStorage();
         } catch {
           setNotice(t.fileLoadError);
         } finally {
@@ -324,6 +357,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     openConfirm(t.clearAllConfirm, async () => {
       await store.clearAllChats();
       setNotice(t.clearAllSuccess);
+      await refreshStorage();
+    });
+  };
+
+  const handleDeleteChatFromStorage = (chatId: string) => {
+    openConfirm(t.deleteChatConfirm, async () => {
+      await store.deleteChat(chatId);
+      await refreshStorage();
     });
   };
 
@@ -1109,6 +1150,119 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     <option value="en">English</option>
                     <option value="zh">简体中文 (Simplified Chinese)</option>
                   </select>
+                </div>
+
+                {/* Storage usage */}
+                <div className="space-y-3.5 border-t border-border-light dark:border-border-dark pt-5">
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="space-y-1 select-none">
+                      <div className="flex items-center gap-2">
+                        <HardDrive className="w-4 h-4 text-amber-600 dark:text-amber-500 shrink-0" />
+                        <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.storageUsage}</h3>
+                      </div>
+                      <p className="text-[11px] text-gray-500 dark:text-gray-400 leading-relaxed">{t.storageUsageDesc}</p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => void refreshStorage()}
+                      disabled={storageLoading}
+                      aria-label={t.storageRefresh}
+                      className="shrink-0 min-h-9 px-3 py-1.5 flex items-center gap-1.5 text-[11px] font-bold border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark text-gray-600 dark:text-gray-300 rounded-lg hover:text-amber-600 dark:hover:text-amber-400 disabled:opacity-50 cursor-pointer transition-colors"
+                    >
+                      <RefreshCw className={`w-3.5 h-3.5 ${storageLoading ? 'animate-spin' : ''}`} />
+                      <span className="hidden sm:inline">{storageLoading ? t.storageLoading : t.storageRefresh}</span>
+                    </button>
+                  </div>
+
+                  {storageSummary && (
+                    <div className="space-y-3">
+                      {storageSummary.browserQuota != null && storageSummary.browserQuota > 0 && (
+                        <div className="space-y-1.5">
+                          <div className="flex items-center justify-between text-[11px] font-semibold text-gray-600 dark:text-gray-300">
+                            <span>{t.storageBrowserQuota}</span>
+                            <span className="font-mono text-gray-500 dark:text-gray-400">
+                              {formatBytes(storageSummary.browserUsage ?? 0)} / {formatBytes(storageSummary.browserQuota)}
+                            </span>
+                          </div>
+                          <div className="h-2 rounded-full bg-black/5 dark:bg-white/8 overflow-hidden">
+                            <div
+                              className="h-full rounded-full bg-amber-500 transition-all duration-300"
+                              style={{
+                                width: `${Math.min(100, ((storageSummary.browserUsage ?? 0) / storageSummary.browserQuota) * 100)}%`,
+                              }}
+                            />
+                          </div>
+                        </div>
+                      )}
+
+                      <div className="grid grid-cols-3 gap-2">
+                        {[
+                          { label: t.storageAppData, value: storageSummary.totalAppBytes },
+                          { label: t.storageChatData, value: storageSummary.chatDataBytes },
+                          { label: t.storageOtherData, value: storageSummary.settingsBytes + storageSummary.foldersBytes },
+                        ].map((item) => (
+                          <div
+                            key={item.label}
+                            className="rounded-xl border border-border-light dark:border-border-dark bg-card-light/30 dark:bg-sidebar-dark/20 px-3 py-2.5 text-center"
+                          >
+                            <div className="text-[10px] font-semibold text-gray-500 dark:text-gray-400 leading-tight">{item.label}</div>
+                            <div className="mt-1 text-xs font-bold font-mono text-gray-800 dark:text-gray-100">{formatBytes(item.value)}</div>
+                          </div>
+                        ))}
+                      </div>
+
+                      <div className="space-y-1.5">
+                        <h4 className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest px-0.5 select-none">
+                          {t.storagePerChat}
+                        </h4>
+                        {storageSummary.chats.length === 0 ? (
+                          <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-4 select-none">{t.storageNoChats}</p>
+                        ) : (
+                          <div className="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">
+                            {storageSummary.chats.map((entry) => {
+                              const share = formatPercent(entry.totalBytes, storageSummary.chatDataBytes);
+                              const barWidth = storageSummary.chatDataBytes
+                                ? Math.max(4, (entry.totalBytes / storageSummary.chatDataBytes) * 100)
+                                : 0;
+                              const title = entry.title === 'New Chat' ? t.newChat : entry.title;
+
+                              return (
+                                <div
+                                  key={entry.chatId}
+                                  className="group flex items-center gap-2.5 px-3 py-2 rounded-xl border border-border-light dark:border-border-dark bg-card-light/20 dark:bg-sidebar-dark/10"
+                                >
+                                  <div className="flex-1 min-w-0 space-y-1">
+                                    <div className="flex items-center justify-between gap-2">
+                                      <span className="text-xs font-semibold text-gray-800 dark:text-gray-200 truncate">{title}</span>
+                                      <span className="text-[11px] font-mono font-bold text-amber-700 dark:text-amber-400 shrink-0">{formatBytes(entry.totalBytes)}</span>
+                                    </div>
+                                    <div className="h-1.5 rounded-full bg-black/5 dark:bg-white/8 overflow-hidden">
+                                      <div
+                                        className="h-full rounded-full bg-amber-500/80"
+                                        style={{ width: `${barWidth}%` }}
+                                      />
+                                    </div>
+                                    <div className="flex items-center justify-between text-[10px] text-gray-400 dark:text-gray-500">
+                                      <span>{t.storageMessageCount.replace('{count}', String(entry.messageCount))}</span>
+                                      <span>{share}</span>
+                                    </div>
+                                  </div>
+                                  <button
+                                    type="button"
+                                    onClick={() => handleDeleteChatFromStorage(entry.chatId)}
+                                    aria-label={`${t.delete}: ${title}`}
+                                    className="shrink-0 min-w-8 min-h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-lg cursor-pointer transition-colors opacity-70 group-hover:opacity-100"
+                                  >
+                                    <Trash2 className="w-3.5 h-3.5" />
+                                  </button>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
                 </div>
 
                 {/* Import / Export & Clear */}

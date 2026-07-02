@@ -5,6 +5,7 @@ import { buildApiUrl, migrateProviderModels, replaceRetiredModel, stripProviderK
 import { encryptString, decryptString, type EncryptedPayload } from '../utils/crypto';
 import { translations } from '../utils/i18n';
 import { estimateTokens } from '../utils/tokens';
+import { isQuotaExceededError, runDbWrite } from '../utils/dbWrite';
 
 export interface SearchResult {
   chatId: string;
@@ -129,6 +130,7 @@ interface ChatState {
   searchOpen: boolean;
   scrollTargetMessageId: string | null;
   activeGenerations: Record<string, { generationId: string; abortController: AbortController }>;
+  storageNotice: string | null;
   
   // Actions
   init: () => Promise<void>;
@@ -161,6 +163,7 @@ interface ChatState {
   switchMessageVariant: (messageId: string, variantIndex: number) => Promise<void>;
   stopGeneration: () => void;
   isChatGenerating: (chatId?: string | null) => boolean;
+  clearStorageNotice: () => void;
   toggleSidebar: () => void;
   setSettingsOpen: (open: boolean) => void;
   setSearchOpen: (open: boolean) => void;
@@ -278,6 +281,24 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
 let removeSystemThemeListener: (() => void) | null = null;
 
 export const useChatStore = create<ChatState>((set, get) => {
+  const reportStorageError = (error: unknown): boolean => {
+    if (!isQuotaExceededError(error)) return false;
+    const language = get().language;
+    const t = translations[language] || translations.ja;
+    set({ storageNotice: t.storageQuotaError });
+    return true;
+  };
+
+  const persistMessageWrite = async (operation: () => Promise<unknown>): Promise<boolean> => {
+    try {
+      await runDbWrite(operation);
+      return true;
+    } catch (error) {
+      if (reportStorageError(error)) return false;
+      throw error;
+    }
+  };
+
   const streamAssistantReply = async ({
     chatId,
     assistantMessageId,
@@ -333,7 +354,11 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     const flushMessageToDb = async () => {
       if (!isCurrentGeneration()) return;
-      await db.messages.put(currentAssistantMessage);
+      try {
+        await runDbWrite(() => db.messages.put(currentAssistantMessage));
+      } catch (error) {
+        reportStorageError(error);
+      }
     };
 
     const commitVisibleMessage = () => {
@@ -490,8 +515,12 @@ export const useChatStore = create<ChatState>((set, get) => {
         if (stillCurrent) {
           commitVisibleMessage();
           await flushMessageToDb();
-          await db.chats.update(chatId, { updatedAt: Date.now() });
-          await get().loadChats();
+          try {
+            await runDbWrite(() => db.chats.update(chatId, { updatedAt: Date.now() }));
+            await get().loadChats();
+          } catch (error) {
+            reportStorageError(error);
+          }
         }
       } catch (e) {
         console.error('Failed to update chat metadata:', e);
@@ -530,6 +559,7 @@ export const useChatStore = create<ChatState>((set, get) => {
   searchOpen: false,
   scrollTargetMessageId: null,
   activeGenerations: {},
+  storageNotice: null,
 
   init: async () => {
     // 1. Load settings from DB
@@ -1031,14 +1061,24 @@ export const useChatStore = create<ChatState>((set, get) => {
       timestamp: Date.now(),
     };
 
-    await db.messages.add(userMsg);
+    if (!(await persistMessageWrite(() => db.messages.add(userMsg)))) return;
 
     const currentChat = get().chats.find((chat) => chat.id === chatId);
     if (currentChat && currentChat.title === 'New Chat') {
-      await db.chats.update(chatId, { title: createChatTitle(content) });
+      try {
+        await runDbWrite(() => db.chats.update(chatId, { title: createChatTitle(content) }));
+      } catch (error) {
+        if (reportStorageError(error)) return;
+        throw error;
+      }
     }
 
-    await db.chats.update(chatId, { updatedAt: Date.now() });
+    try {
+      await runDbWrite(() => db.chats.update(chatId, { updatedAt: Date.now() }));
+    } catch (error) {
+      if (reportStorageError(error)) return;
+      throw error;
+    }
     await get().loadChats();
 
     const messagesSoFar = await db.messages.where('chatId').equals(chatId).sortBy('timestamp');
@@ -1076,7 +1116,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       activeVariantIndex: 0,
     };
 
-    await db.messages.add(assistantMsg);
+    if (!(await persistMessageWrite(() => db.messages.add(assistantMsg)))) return;
 
     set({
       messages: [...messagesSoFar, assistantMsg],
@@ -1111,11 +1151,11 @@ export const useChatStore = create<ChatState>((set, get) => {
       ...targetMessage,
       content,
     };
-    await db.messages.put(updatedUserMessage);
+    if (!(await persistMessageWrite(() => db.messages.put(updatedUserMessage)))) return;
 
     const followingMessageIds = messages.slice(messageIndex + 1).map((message) => message.id);
     if (followingMessageIds.length > 0) {
-      await db.messages.bulkDelete(followingMessageIds);
+      if (!(await persistMessageWrite(() => db.messages.bulkDelete(followingMessageIds)))) return;
     }
 
     const baseMessages = messages
@@ -1135,7 +1175,12 @@ export const useChatStore = create<ChatState>((set, get) => {
       chatUpdates.title = createChatTitle(content);
     }
 
-    await db.chats.update(chatId, chatUpdates);
+    try {
+      await runDbWrite(() => db.chats.update(chatId, chatUpdates));
+    } catch (error) {
+      if (reportStorageError(error)) return;
+      throw error;
+    }
     await get().loadChats();
 
     const responseModelId =
@@ -1171,7 +1216,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       activeVariantIndex: 0,
     };
 
-    await db.messages.add(assistantMsg);
+    if (!(await persistMessageWrite(() => db.messages.add(assistantMsg)))) return;
     set({
       messages: [...baseMessages, assistantMsg],
     });
@@ -1256,7 +1301,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       activeVariantIndex: newActiveIndex,
     };
 
-    await db.messages.put(updatedAssistantMsg);
+    if (!(await persistMessageWrite(() => db.messages.put(updatedAssistantMsg)))) return;
 
     const updatedMessages = messages.map((m, idx) => 
       idx === messageIndex ? updatedAssistantMsg : m
@@ -1373,6 +1418,10 @@ export const useChatStore = create<ChatState>((set, get) => {
   isChatGenerating: (chatId) => {
     const id = chatId ?? get().activeChatId;
     return !!(id && get().activeGenerations[id]);
+  },
+
+  clearStorageNotice: () => {
+    set({ storageNotice: null });
   },
 
   toggleSidebar: async () => {
