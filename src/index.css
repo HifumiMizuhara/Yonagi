@@ -163,7 +163,14 @@ html {
   height: 100dvh;
 }
 
+/* Pin the app to the viewport. `overflow: hidden` alone does NOT stop
+   touch/rubber-band scrolling of the document on mobile Safari — the page
+   drifts behind fixed dropdowns and overlays and the layout shifts. Fixing
+   the body to the viewport makes the document itself unscrollable, so only
+   the inner `overflow-y-auto` regions (message list, dropdown panels) scroll. */
 body {
+  position: fixed;
+  inset: 0;
   max-height: 100dvh;
 }
 
