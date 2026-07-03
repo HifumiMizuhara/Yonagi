@@ -24,34 +24,36 @@ const detectProviderKey = ({ providerId, providerName, modelId }: Omit<ModelIcon
 
 const baseClassName = 'inline-flex shrink-0 items-center justify-center overflow-hidden rounded-[0.7rem] border border-white/60 bg-white shadow-sm dark:border-white/10';
 
+const iconUrl = (name: string) => `${import.meta.env.BASE_URL}model-icons/${name}`;
+
 const iconMap = {
   gemini: {
-    src: '/model-icons/gemini.svg',
+    src: iconUrl('gemini.svg'),
     alt: 'Google Gemini',
     container: 'bg-white dark:bg-white',
   },
   claude: {
-    src: '/model-icons/anthropic.ico',
+    src: iconUrl('anthropic.ico'),
     alt: 'Anthropic Claude',
     container: 'bg-white dark:bg-white',
   },
   openai: {
-    src: '/model-icons/openai.svg',
+    src: iconUrl('openai.svg'),
     alt: 'OpenAI',
     container: 'bg-white dark:bg-white',
   },
   deepseek: {
-    src: '/model-icons/deepseek.ico',
+    src: iconUrl('deepseek.ico'),
     alt: 'DeepSeek',
     container: 'bg-white dark:bg-white',
   },
   openrouter: {
-    src: '/model-icons/openrouter.ico',
+    src: iconUrl('openrouter.ico'),
     alt: 'OpenRouter',
     container: 'bg-white dark:bg-white',
   },
   ollama: {
-    src: '/model-icons/ollama.png',
+    src: iconUrl('ollama.png'),
     alt: 'Ollama',
     container: 'bg-white dark:bg-white',
   },
