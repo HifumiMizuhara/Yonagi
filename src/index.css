@@ -185,16 +185,21 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
     linear-gradient(180deg, rgba(13, 16, 23, 0.98) 0%, rgba(15, 19, 30, 0.98) 100%);
 }
 
-.gemini-chip {
-  background: rgba(255, 255, 255, 0.7);
-  border: 1px solid rgba(148, 163, 184, 0.18);
-  box-shadow: 0 12px 30px rgba(148, 163, 184, 0.12);
-}
+/* Layered so Tailwind utility classes (e.g. conditional active-state
+   backgrounds) can win the cascade — unlayered rules always beat
+   `@layer utilities` regardless of source order or specificity. */
+@layer components {
+  .gemini-chip {
+    background: rgba(255, 255, 255, 0.7);
+    border: 1px solid rgba(148, 163, 184, 0.18);
+    box-shadow: 0 12px 30px rgba(148, 163, 184, 0.12);
+  }
 
-.dark .gemini-chip {
-  background: rgba(23, 25, 35, 0.72);
-  border-color: rgba(255, 255, 255, 0.08);
-  box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+  .dark .gemini-chip {
+    background: rgba(23, 25, 35, 0.72);
+    border-color: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 16px 34px rgba(0, 0, 0, 0.32);
+  }
 }
 
 /* Glassmorphism helpers */
