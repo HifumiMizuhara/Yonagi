@@ -1420,11 +1420,11 @@ export const ChatArea: React.FC = () => {
                               setCompareDropdownOpen(compareDropdownOpen === msg.id ? null : msg.id);
                             }}
                             aria-label={t.compare}
-                            className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
+                            className="flex items-center shrink-0 space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans whitespace-nowrap"
                             title={t.compare}
                           >
                             <Scale className="w-3 h-3" />
-                            <span>{t.compare}</span>
+                            <span className="whitespace-nowrap">{t.compare}</span>
                           </button>
 
                           {compareDropdownOpen === msg.id && (
@@ -1481,11 +1481,11 @@ export const ChatArea: React.FC = () => {
                             confirmLabel: t.branchCreate,
                             onConfirm: () => store.createBranch(index),
                           })}
-                          className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
+                          className="flex items-center shrink-0 space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans whitespace-nowrap"
                           title={t.branchCreate}
                         >
                           <GitFork className="w-3 h-3" />
-                          <span>{t.branchCreate}</span>
+                          <span className="whitespace-nowrap">{t.branchCreate}</span>
                         </button>
                         <ContextToggleButtons msg={msg} store={store} t={t} />
                       </div>
@@ -1693,10 +1693,10 @@ const ActionButton: React.FC<{
   return (
     <button
       onClick={handleAction}
-      className="flex items-center space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans"
+      className="flex items-center shrink-0 space-x-1.5 px-2.5 py-1.5 text-[11px] font-semibold text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark rounded-lg transition-colors cursor-pointer font-sans whitespace-nowrap"
     >
       {clicked ? <Check className="w-3 h-3 text-emerald-500 animate-scale-up" /> : icon}
-      <span>{clicked && successLabel ? successLabel : label}</span>
+      <span className="whitespace-nowrap">{clicked && successLabel ? successLabel : label}</span>
     </button>
   );
 };

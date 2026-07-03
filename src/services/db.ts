@@ -107,14 +107,14 @@ export interface ProviderConfig {
   corsProxy: string;
 }
 
-class HimawariDatabase extends Dexie {
+class YonagiDatabase extends Dexie {
   chats!: Table<Chat, string>;
   messages!: Table<Message, string>;
   settings!: Table<Setting, string>;
   folders!: Table<Folder, string>;
 
   constructor() {
-    // Keep the historical IndexedDB name so existing local data remains readable.
+    // Keep the historical IndexedDB name (predates the Himawari -> Yonagi rebrand) so existing local data remains readable.
     super('MinaseDatabase');
     this.version(1).stores({
       chats: 'id, title, modelId, createdAt, updatedAt',
@@ -135,4 +135,4 @@ class HimawariDatabase extends Dexie {
   }
 }
 
-export const db = new HimawariDatabase();
+export const db = new YonagiDatabase();

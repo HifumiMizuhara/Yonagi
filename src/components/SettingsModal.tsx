@@ -294,12 +294,12 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
       const chats = await db.chats.toArray();
       const messages = await db.messages.toArray();
       const folders = await db.folders.toArray();
-      const exportObj = { version: EXPORT_VERSION, exporter: 'Himawari AI Chat', chats, messages, folders };
+      const exportObj = { version: EXPORT_VERSION, exporter: 'Yonagi AI Chat', chats, messages, folders };
       const blob = new Blob([JSON.stringify(exportObj, null, 2)], { type: 'application/json' });
       const url = URL.createObjectURL(blob);
       const a = document.createElement('a');
       a.href = url;
-      a.download = `himawari-chats-export-${new Date().toISOString().slice(0, 10)}.json`;
+      a.download = `yonagi-chats-export-${new Date().toISOString().slice(0, 10)}.json`;
       document.body.appendChild(a);
       a.click();
       document.body.removeChild(a);

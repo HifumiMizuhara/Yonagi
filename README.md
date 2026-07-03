@@ -1,8 +1,8 @@
-# Himawari 🌻
+# Yonagi 🌻
 
 A privacy-first, local-first, multi-provider LLM chat client that runs entirely in your browser. Bring your own API keys, talk to models from many providers in a single unified interface, and keep all of your data on your own device.
 
-Himawari has **no backend**. There is no server to deploy, no account to create, and no telemetry. Your chats, settings, and API keys live in your browser's IndexedDB. Requests go directly from your browser to each provider's API.
+Yonagi has **no backend**. There is no server to deploy, no account to create, and no telemetry. Your chats, settings, and API keys live in your browser's IndexedDB. Requests go directly from your browser to each provider's API.
 
 ---
 ## Special Thanks
@@ -141,7 +141,7 @@ src/
 
 ## Privacy & security
 
-- **No server, no telemetry.** Himawari talks only to the provider APIs you configure.
+- **No server, no telemetry.** Yonagi talks only to the provider APIs you configure.
 - **Local storage.** Chats, settings, and keys are persisted in IndexedDB on your device.
 - **Optional key encryption.** When enabled, API keys are encrypted at rest with a passphrase you provide; the passphrase is held in memory only for the session and is never persisted.
 - **CORS proxy support.** Some provider endpoints require a proxy for direct browser access; configure one per provider if needed. Be mindful that a proxy can see traffic routed through it.

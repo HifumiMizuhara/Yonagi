@@ -4,7 +4,7 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 
 ## Project overview
 
-**Himawari** is a privacy-first, browser-only LLM chat client. There is no backend — all state lives in IndexedDB, and API calls go directly from the browser to each provider. The app is deployed as a single self-contained HTML file to GitHub Pages.
+**Yonagi** (formerly Himawari) is a privacy-first, browser-only LLM chat client. There is no backend — all state lives in IndexedDB, and API calls go directly from the browser to each provider. The app is deployed as a single self-contained HTML file to GitHub Pages.
 
 ## Commands
 
@@ -29,7 +29,7 @@ Tests use Node's built-in `node:test` runner with `--experimental-strip-types` t
 
 ### Data layer — `src/services/db.ts`
 
-Dexie schema with three tables: `chats`, `messages`, `settings`. The IndexedDB database is named **`MinaseDatabase`** (not `HimawariDatabase`) — this name must stay unchanged to preserve existing user data. Settings are stored as key-value pairs; structured objects (`providers`, `modelPricing`, etc.) are stored as single JSON-serialized values.
+Dexie schema with three tables: `chats`, `messages`, `settings`. The IndexedDB database is named **`MinaseDatabase`** (not `YonagiDatabase`) — this name must stay unchanged to preserve existing user data. Settings are stored as key-value pairs; structured objects (`providers`, `modelPricing`, etc.) are stored as single JSON-serialized values.
 
 `Message` objects carry a `variants[]` array for regeneration history. The active variant's content is always mirrored into `message.content` so the rest of the code can read it without variant-index logic.
 
@@ -70,7 +70,7 @@ AES-GCM via Web Crypto API. When encryption is enabled, provider records in the 
 
 ### Build configuration
 
-`vite.config.ts` sets `base: '/Himawari/'` for production builds (GitHub Pages sub-path) and `'/'` for the dev server. `vite-plugin-singlefile` inlines all assets into one HTML file. Tailwind CSS v4 is integrated via `@tailwindcss/vite` (no `tailwind.config.js`).
+`vite.config.ts` sets `base: '/Yonagi/'` for production builds (GitHub Pages sub-path, matching the `Yonagi` repo name after the Himawari rebrand) and `'/'` for the dev server. `vite-plugin-singlefile` inlines all assets into one HTML file. Tailwind CSS v4 is integrated via `@tailwindcss/vite` (no `tailwind.config.js`).
 
 ## Key invariants
 
