@@ -27,20 +27,30 @@ const App: React.FC = () => {
   // iOS Safari doesn't shrink the layout viewport when the on-screen keyboard
   // opens, so `100dvh` stays taller than what's actually visible and the
   // composer/footer can end up hidden behind the keyboard. Track the visual
-  // viewport height explicitly and use it to cap the app shell height.
+  // viewport height and cap the app shell height — but only once the
+  // keyboard has actually opened. Mobile browsers (Android Chrome in
+  // particular) also fire `visualViewport.resize` continuously while their
+  // own address bar auto-hides/shows during normal scrolling; reacting to
+  // every one of those and mutating layout mid-gesture was cancelling taps
+  // (a moving tap target gets treated as a scroll, not a click), which is
+  // why the web search toggle stopped responding on Android. Only step in
+  // once the visual viewport has shrunk by more than a toolbar animation
+  // ever would, and otherwise leave `h-dvh` to handle it natively.
   useEffect(() => {
     const viewport = window.visualViewport;
     if (!viewport) return;
+    const KEYBOARD_HEIGHT_THRESHOLD = 150;
     const updateHeight = () => {
-      document.documentElement.style.setProperty('--app-height', `${viewport.height}px`);
+      const shrunkBy = window.innerHeight - viewport.height;
+      if (shrunkBy > KEYBOARD_HEIGHT_THRESHOLD) {
+        document.documentElement.style.setProperty('--app-height', `${viewport.height}px`);
+      } else {
+        document.documentElement.style.removeProperty('--app-height');
+      }
     };
     updateHeight();
     viewport.addEventListener('resize', updateHeight);
-    viewport.addEventListener('scroll', updateHeight);
-    return () => {
-      viewport.removeEventListener('resize', updateHeight);
-      viewport.removeEventListener('scroll', updateHeight);
-    };
+    return () => viewport.removeEventListener('resize', updateHeight);
   }, []);
 
   return (
