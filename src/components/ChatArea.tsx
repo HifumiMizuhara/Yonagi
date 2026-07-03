@@ -500,7 +500,12 @@ export const ChatArea: React.FC = () => {
     }
   };
 
-  const toolbarBtnClass = 'gemini-chip min-h-11 flex items-center space-x-1.5 px-3.5 py-1.5 hover:bg-white/90 dark:hover:bg-white/6 text-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold transition-all active:scale-[0.98] cursor-pointer select-none backdrop-blur-xl';
+  // `touch-manipulation` opts these buttons out of Android Chrome's tap/scroll
+  // disambiguation. Without it, a tap that starts inside the horizontally
+  // scrollable toolbar strip (or that jitters a pixel while the `active:scale`
+  // transform fires) can be reinterpreted as a scroll, and Chrome silently
+  // cancels the click — which is what made the web search toggle unresponsive.
+  const toolbarBtnClass = 'gemini-chip min-h-11 flex items-center space-x-1.5 px-3.5 py-1.5 hover:bg-white/90 dark:hover:bg-white/6 text-gray-700 dark:text-gray-200 rounded-full text-xs font-semibold transition-all active:scale-[0.98] cursor-pointer select-none touch-manipulation backdrop-blur-xl';
   const isEmptyChat = store.messages.length === 0;
 
   const composerBox = (
