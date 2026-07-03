@@ -6,6 +6,7 @@ import { encryptString, decryptString, type EncryptedPayload } from '../utils/cr
 import { translations } from '../utils/i18n';
 import { estimateTokens } from '../utils/tokens';
 import { isQuotaExceededError, runDbWrite } from '../utils/dbWrite';
+import { buildContextMessages, messagesEligibleForSummary } from '../utils/contextBuilder';
 
 export interface SearchResult {
   chatId: string;
@@ -99,7 +100,7 @@ const findProviderForModel = (
   return Object.values(providers).find((provider) => provider.models.includes(modelId));
 };
 
-interface ChatState {
+export interface ChatState {
   // Data State
   chats: Chat[];
   messages: Message[];
@@ -117,6 +118,9 @@ interface ChatState {
   language: 'ja' | 'en' | 'zh';
   promptPresets: PromptPreset[];
   modelPricing: Record<string, ModelPrice>;
+  contextWindowOverrides: Record<string, number>;
+  defaultHistoryWindowLimit: number | null;
+  summarizingChatId: string | null;
 
   // Key encryption State
   keyEncryptionEnabled: boolean;
@@ -180,6 +184,16 @@ interface ChatState {
   // Pricing
   setModelPrice: (modelId: string, price: ModelPrice) => Promise<void>;
   removeModelPrice: (modelId: string) => Promise<void>;
+
+  // Context management
+  setContextWindowOverride: (modelId: string, contextWindow: number) => Promise<void>;
+  removeContextWindowOverride: (modelId: string) => Promise<void>;
+  toggleMessageExcluded: (messageId: string) => Promise<void>;
+  toggleMessagePinned: (messageId: string) => Promise<void>;
+  updateChatMemoryNote: (chatId: string, memoryNote: string) => Promise<void>;
+  updateChatHistoryWindowLimit: (chatId: string, limit: number | null) => Promise<void>;
+  summarizeChat: (chatId: string, keepRecent?: number) => Promise<void>;
+  clearChatSummary: (chatId: string) => Promise<void>;
 
   // Folders
   loadFolders: () => Promise<void>;
@@ -275,6 +289,8 @@ const DEFAULT_SETTINGS: Record<string, unknown> = {
   sidebarOpen: 'true',
   promptPresets: [],
   modelPricing: {},
+  contextWindowOverrides: {},
+  defaultHistoryWindowLimit: null,
   keyEncryptionEnabled: false,
 };
 
@@ -317,6 +333,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     temperature,
     abortLog,
     errorLog,
+    memoryNote,
+    historyWindowLimit,
+    summaryContent,
+    summaryUpToMessageId,
   }: {
     chatId: string;
     assistantMessageId: string;
@@ -328,6 +348,10 @@ export const useChatStore = create<ChatState>((set, get) => {
     temperature: number;
     abortLog: string;
     errorLog: string;
+    memoryNote?: string;
+    historyWindowLimit?: number;
+    summaryContent?: string;
+    summaryUpToMessageId?: string;
   }) => {
     const providerConfig = findProviderForModel(get().providers, modelId, providerId) || get().providers.custom;
     const controller = new AbortController();
@@ -420,12 +444,22 @@ export const useChatStore = create<ChatState>((set, get) => {
         }));
       };
 
+      const effectiveContextMessages = buildContextMessages(contextMessages, {
+        memoryNote,
+        historyWindowLimit,
+        summaryContent,
+        summaryUpToMessageId,
+      });
+      const effectiveSystemPrompt = memoryNote
+        ? `${systemPrompt}\n\n[Persistent memory note]\n${memoryNote}`
+        : systemPrompt;
+
       await streamChatCompletion(
         {
           providerConfig,
           modelId,
-          messages: buildChatContext(contextMessages),
-          systemPrompt,
+          messages: buildChatContext(effectiveContextMessages),
+          systemPrompt: effectiveSystemPrompt,
           temperature,
           effort: get().activeEffort,
           webSearch: get().activeWebSearch,
@@ -475,7 +509,7 @@ export const useChatStore = create<ChatState>((set, get) => {
       // If the provider didn't return usage stats (e.g. Gemini via OpenRouter),
       // fall back to a local token estimate so the cost badge still appears.
       if (accumulatedUsage === null && accumulatedText.length > 0) {
-        const inputText = (systemPrompt || '') + contextMessages.map((m) => m.content || '').join(' ');
+        const inputText = (effectiveSystemPrompt || '') + effectiveContextMessages.map((m) => m.content || '').join(' ');
         const estimatedUsage: TokenUsage = {
           inputTokens: estimateTokens(inputText),
           outputTokens: estimateTokens(accumulatedText),
@@ -556,6 +590,9 @@ export const useChatStore = create<ChatState>((set, get) => {
   language: 'ja',
   promptPresets: [],
   modelPricing: {},
+  contextWindowOverrides: {},
+  defaultHistoryWindowLimit: null,
+  summarizingChatId: null,
 
   keyEncryptionEnabled: false,
   keysLocked: false,
@@ -633,6 +670,8 @@ export const useChatStore = create<ChatState>((set, get) => {
 
       const promptPresets = getSetting<PromptPreset[]>('promptPresets') || [];
       const modelPricing = getSetting<Record<string, ModelPrice>>('modelPricing') || {};
+      const contextWindowOverrides = getSetting<Record<string, number>>('contextWindowOverrides') || {};
+      const defaultHistoryWindowLimit = getSetting<number | null>('defaultHistoryWindowLimit') ?? null;
       const keyEncryptionEnabled = getSetting<unknown>('keyEncryptionEnabled') === true;
       const encryptedKeys = settingsMap['encryptedKeys'];
       // If encryption is on and an encrypted blob exists, keys live only inside it;
@@ -671,6 +710,8 @@ export const useChatStore = create<ChatState>((set, get) => {
         activeWebSearch,
         promptPresets,
         modelPricing,
+        contextWindowOverrides,
+        defaultHistoryWindowLimit,
         keyEncryptionEnabled,
         keysLocked,
         unlockPromptOpen: keysLocked,
@@ -1162,6 +1203,10 @@ export const useChatStore = create<ChatState>((set, get) => {
       temperature: activeChat?.temperature ?? 0.7,
       abortLog: 'Generation aborted',
       errorLog: 'Error generating response:',
+      memoryNote: activeChat?.memoryNote,
+      historyWindowLimit: activeChat?.historyWindowLimit ?? get().defaultHistoryWindowLimit ?? undefined,
+      summaryContent: activeChat?.summaryContent,
+      summaryUpToMessageId: activeChat?.summaryUpToMessageId,
     });
   },
 
@@ -1202,6 +1247,18 @@ export const useChatStore = create<ChatState>((set, get) => {
     const chatUpdates: Partial<Chat> = { updatedAt: Date.now() };
     if (shouldRetitle) {
       chatUpdates.title = createChatTitle(content);
+    }
+
+    // The edited message may fall inside the range already folded into the chat's
+    // summary; if so, that summary no longer reflects the conversation and must be dropped.
+    if (activeChat?.summaryUpToMessageId) {
+      const summaryIdx = messages.findIndex((message) => message.id === activeChat.summaryUpToMessageId);
+      if (summaryIdx === -1 || summaryIdx >= messageIndex) {
+        chatUpdates.summaryContent = undefined;
+        chatUpdates.summaryUpToMessageId = undefined;
+        activeChat.summaryContent = undefined;
+        activeChat.summaryUpToMessageId = undefined;
+      }
     }
 
     try {
@@ -1261,6 +1318,10 @@ export const useChatStore = create<ChatState>((set, get) => {
       temperature: activeChat?.temperature ?? 0.7,
       abortLog: 'Edited message regeneration aborted',
       errorLog: 'Error regenerating edited message response:',
+      memoryNote: activeChat?.memoryNote,
+      historyWindowLimit: activeChat?.historyWindowLimit ?? get().defaultHistoryWindowLimit ?? undefined,
+      summaryContent: activeChat?.summaryContent,
+      summaryUpToMessageId: activeChat?.summaryUpToMessageId,
     });
   },
 
@@ -1352,6 +1413,10 @@ export const useChatStore = create<ChatState>((set, get) => {
       temperature: activeChat?.temperature ?? 0.7,
       abortLog: 'Regeneration aborted',
       errorLog: 'Error regenerating response:',
+      memoryNote: activeChat?.memoryNote,
+      historyWindowLimit: activeChat?.historyWindowLimit ?? get().defaultHistoryWindowLimit ?? undefined,
+      summaryContent: activeChat?.summaryContent,
+      summaryUpToMessageId: activeChat?.summaryUpToMessageId,
     });
   },
 
@@ -1402,6 +1467,10 @@ export const useChatStore = create<ChatState>((set, get) => {
       temperature: activeChat.temperature,
       effort: activeChat.effort,
       webSearch: activeChat.webSearch,
+      memoryNote: activeChat.memoryNote,
+      historyWindowLimit: activeChat.historyWindowLimit,
+      // Summary is intentionally not copied: it references message ids from the
+      // original chat, and the branch gets freshly-generated ids for its copies.
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
@@ -1424,6 +1493,8 @@ export const useChatStore = create<ChatState>((set, get) => {
       thinking: m.thinking,
       citations: m.citations ? [...m.citations] : undefined,
       usage: m.usage ? { ...m.usage } : undefined,
+      excludedFromContext: m.excludedFromContext,
+      pinnedInContext: m.pinnedInContext,
     }));
 
     if (copiedMessages.length > 0) {
@@ -1538,6 +1609,105 @@ export const useChatStore = create<ChatState>((set, get) => {
     delete pricing[modelId];
     set({ modelPricing: pricing });
     await db.settings.put({ key: 'modelPricing', value: pricing });
+  },
+
+  // ---- Context management ----
+  setContextWindowOverride: async (modelId, contextWindow) => {
+    const overrides = { ...get().contextWindowOverrides, [modelId]: contextWindow };
+    set({ contextWindowOverrides: overrides });
+    await db.settings.put({ key: 'contextWindowOverrides', value: overrides });
+  },
+
+  removeContextWindowOverride: async (modelId) => {
+    const overrides = { ...get().contextWindowOverrides };
+    delete overrides[modelId];
+    set({ contextWindowOverrides: overrides });
+    await db.settings.put({ key: 'contextWindowOverrides', value: overrides });
+  },
+
+  toggleMessageExcluded: async (messageId) => {
+    const messages = get().messages;
+    const target = messages.find((m) => m.id === messageId);
+    if (!target) return;
+    const updated: Message = { ...target, excludedFromContext: !target.excludedFromContext };
+    await db.messages.put(updated);
+    set({ messages: messages.map((m) => (m.id === messageId ? updated : m)) });
+  },
+
+  toggleMessagePinned: async (messageId) => {
+    const messages = get().messages;
+    const target = messages.find((m) => m.id === messageId);
+    if (!target) return;
+    const updated: Message = { ...target, pinnedInContext: !target.pinnedInContext };
+    await db.messages.put(updated);
+    set({ messages: messages.map((m) => (m.id === messageId ? updated : m)) });
+  },
+
+  updateChatMemoryNote: async (chatId, memoryNote) => {
+    await db.chats.update(chatId, { memoryNote });
+    set((state) => ({
+      chats: state.chats.map((c) => (c.id === chatId ? { ...c, memoryNote } : c)),
+    }));
+  },
+
+  updateChatHistoryWindowLimit: async (chatId, limit) => {
+    const historyWindowLimit = limit ?? undefined;
+    await db.chats.update(chatId, { historyWindowLimit });
+    set((state) => ({
+      chats: state.chats.map((c) => (c.id === chatId ? { ...c, historyWindowLimit } : c)),
+    }));
+  },
+
+  summarizeChat: async (chatId, keepRecent = 6) => {
+    if (get().summarizingChatId || get().activeGenerations[chatId]) return;
+    set({ summarizingChatId: chatId });
+    try {
+      const messages = await db.messages.where('chatId').equals(chatId).sortBy('timestamp');
+      const eligible = messagesEligibleForSummary(messages, keepRecent);
+      if (eligible.length === 0) return;
+
+      const chat = await db.chats.get(chatId);
+      const modelId = chat?.modelId || get().activeModelId;
+      const providerId = chat?.providerId || findProviderForModel(get().providers, modelId, get().activeProviderId)?.id || get().activeProviderId;
+      const providerConfig = findProviderForModel(get().providers, modelId, providerId) || get().providers.custom;
+
+      const transcript = eligible
+        .map((m) => `${m.role}: ${getActiveMessageContent(m)}`)
+        .join('\n');
+
+      const summaryText = await streamChatCompletion(
+        {
+          providerConfig,
+          modelId,
+          messages: [{
+            role: 'user',
+            content: `Summarize the following conversation concisely, preserving facts, decisions, and open questions the assistant still needs to remember. Respond with the summary only, no preamble.\n\n${transcript}`,
+          }],
+          systemPrompt: 'You are a precise conversation summarizer.',
+          temperature: 0.3,
+        },
+        () => {},
+        () => {},
+        new AbortController().signal
+      );
+
+      const summaryUpToMessageId = eligible[eligible.length - 1].id;
+      await db.chats.update(chatId, { summaryContent: summaryText, summaryUpToMessageId });
+      set((state) => ({
+        chats: state.chats.map((c) => (c.id === chatId ? { ...c, summaryContent: summaryText, summaryUpToMessageId } : c)),
+      }));
+    } catch (error) {
+      console.error('Failed to summarize chat:', error);
+    } finally {
+      set((state) => (state.summarizingChatId === chatId ? { summarizingChatId: null } : state));
+    }
+  },
+
+  clearChatSummary: async (chatId) => {
+    await db.chats.update(chatId, { summaryContent: undefined, summaryUpToMessageId: undefined });
+    set((state) => ({
+      chats: state.chats.map((c) => (c.id === chatId ? { ...c, summaryContent: undefined, summaryUpToMessageId: undefined } : c)),
+    }));
   },
 
   // ---- Key encryption ----

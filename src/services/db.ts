@@ -19,6 +19,11 @@ export interface Chat {
   effort?: string;
   webSearch?: boolean;
   folderId?: string;
+  // Context management
+  memoryNote?: string; // persistent note injected into every request, independent of systemPrompt
+  historyWindowLimit?: number; // max non-pinned messages sent as context; unset = unlimited
+  summaryContent?: string; // LLM-generated summary standing in for older messages
+  summaryUpToMessageId?: string; // last message id covered by summaryContent
 }
 
 export interface Attachment {
@@ -71,6 +76,9 @@ export interface Message {
   citations?: Citation[];
   usage?: TokenUsage;
   error?: string;
+  // Context management
+  excludedFromContext?: boolean; // kept in the UI but skipped when building the API payload
+  pinnedInContext?: boolean; // always sent even if the history window/summary would otherwise drop it
 }
 
 export interface PromptPreset {

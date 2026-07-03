@@ -113,6 +113,23 @@ export const translations = {
     webSearchTooltip: 'モデル内蔵のWeb検索を有効にする',
     sourcesLabel: '引用元',
 
+    // Context management
+    contextUsage: 'コンテキスト使用量',
+    excludeFromContext: 'コンテキストから除外',
+    includeInContext: 'コンテキストに戻す',
+    pinInContext: 'ピン留め',
+    unpinFromContext: 'ピン留め解除',
+    contextSettings: 'コンテキスト',
+    memoryNote: '長期メモ',
+    memoryNoteDesc: 'この会話の全リクエストに常に含める内容です（システムプロンプトとは別枠）。',
+    memoryNotePlaceholder: '例: ユーザーはPythonを好み、簡潔な回答を希望する。',
+    historyWindowLimit: '履歴ウィンドウ上限',
+    historyWindowLimitDesc: 'ピン留めされたメッセージを除き、直近何件のメッセージを送信するか。空欄で無制限。',
+    summarizeNow: '今すぐ要約して圧縮',
+    summarizing: '要約中...',
+    summaryActive: '要約が適用されています',
+    clearSummary: '要約を破棄',
+
     // Search
     search: '検索',
     searchPlaceholder: 'メッセージを検索...',
@@ -321,6 +338,23 @@ export const translations = {
     webSearchTooltip: 'Enable the model\'s built-in web search',
     sourcesLabel: 'Sources',
 
+    // Context management
+    contextUsage: 'Context usage',
+    excludeFromContext: 'Exclude from context',
+    includeInContext: 'Include in context',
+    pinInContext: 'Pin',
+    unpinFromContext: 'Unpin',
+    contextSettings: 'Context',
+    memoryNote: 'Memory note',
+    memoryNoteDesc: 'Always included with every request in this chat, separate from the system prompt.',
+    memoryNotePlaceholder: 'e.g. The user prefers Python and concise answers.',
+    historyWindowLimit: 'History window limit',
+    historyWindowLimitDesc: 'How many recent messages to send, excluding pinned ones. Leave blank for unlimited.',
+    summarizeNow: 'Summarize & compress now',
+    summarizing: 'Summarizing...',
+    summaryActive: 'A summary is in effect',
+    clearSummary: 'Discard summary',
+
     // Search
     search: 'Search',
     searchPlaceholder: 'Search messages...',
@@ -528,6 +562,23 @@ export const translations = {
     webSearchLabel: '联网搜索',
     webSearchTooltip: '启用模型内置的联网搜索',
     sourcesLabel: '来源',
+
+    // Context management
+    contextUsage: '上下文使用量',
+    excludeFromContext: '从上下文中排除',
+    includeInContext: '重新加入上下文',
+    pinInContext: '固定',
+    unpinFromContext: '取消固定',
+    contextSettings: '上下文',
+    memoryNote: '长期备注',
+    memoryNoteDesc: '每次请求都会包含此内容（与系统提示词分开）。',
+    memoryNotePlaceholder: '例如：用户偏好 Python，并希望回答简洁。',
+    historyWindowLimit: '历史窗口上限',
+    historyWindowLimitDesc: '除固定消息外，发送最近多少条消息。留空表示不限制。',
+    summarizeNow: '立即摘要并压缩',
+    summarizing: '正在摘要...',
+    summaryActive: '已应用摘要',
+    clearSummary: '丢弃摘要',
 
     // Search
     search: '搜索',

@@ -57,7 +57,7 @@ export const DEFAULT_MODEL_PRICING: Record<string, ModelPrice> = {
   'deepseek-reasoner': { input: 0.55, output: 2.19 },
 };
 
-function normalizeModelId(modelId: string): string {
+export function normalizeModelId(modelId: string): string {
   return modelId
     .trim()
     .toLowerCase()

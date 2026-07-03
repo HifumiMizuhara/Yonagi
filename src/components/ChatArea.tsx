@@ -1,9 +1,9 @@
 import React, { useState, useRef, useEffect, useLayoutEffect, useMemo } from 'react';
 import { createPortal } from 'react-dom';
-import { useChatStore } from '../store/useChatStore';
+import { useChatStore, type ChatState } from '../store/useChatStore';
 import { useTranslation } from '../hooks/useTranslation';
 import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
-import { db, type Attachment, type Citation, type TokenUsage, type ModelPrice } from '../services/db';
+import { db, type Attachment, type Citation, type TokenUsage, type ModelPrice, type Message } from '../services/db';
 import {
   extractTextFromPdf,
   readFileAsText,
@@ -15,6 +15,8 @@ import {
 } from '../utils/fileParser';
 import { estimateTokens, formatCost, DEFAULT_MODEL_PRICING, selectUsageCost } from '../utils/tokens';
 import { claudeSupportsXHigh } from '../utils/providerCompatibility';
+import { buildContextMessages, estimateContextUsage } from '../utils/contextBuilder';
+import { resolveContextWindow } from '../utils/contextWindows';
 import { isTouchPrimaryDevice } from '../utils/device';
 import { SafeMarkdownLink } from '../utils/markdownComponents';
 import { sanitizeHref } from '../utils/safeUrl';
@@ -22,7 +24,7 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Pencil,
-  ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe
+  ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe, Pin, EyeOff, Eye, PinOff, Sparkles
 } from 'lucide-react';
 import { ModelIcon } from './ModelIcon';
 
@@ -121,6 +123,7 @@ export const ChatArea: React.FC = () => {
   const [showModelDropdown, setShowModelDropdown] = useState(false);
   const [showEffortDropdown, setShowEffortDropdown] = useState(false);
   const [showPromptDropdown, setShowPromptDropdown] = useState(false);
+  const [showContextDropdown, setShowContextDropdown] = useState(false);
 
   const [compareStates, setCompareStates] = useState<Record<string, boolean>>({});
   const [compareDropdownOpen, setCompareDropdownOpen] = useState<string | null>(null);
@@ -143,9 +146,11 @@ export const ChatArea: React.FC = () => {
   const dropdownRef = useRef<HTMLDivElement>(null);
   const effortDropdownRef = useRef<HTMLDivElement>(null);
   const promptDropdownRef = useRef<HTMLDivElement>(null);
+  const contextDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const effortDropdownPanelRef = useRef<HTMLDivElement>(null);
   const promptDropdownPanelRef = useRef<HTMLDivElement>(null);
+  const contextDropdownPanelRef = useRef<HTMLDivElement>(null);
   const dropdownCompareRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -229,6 +234,13 @@ export const ChatArea: React.FC = () => {
       if (dropdownCompareRef.current && !dropdownCompareRef.current.contains(target)) {
         setCompareDropdownOpen(null);
       }
+      if (
+        contextDropdownRef.current &&
+        !contextDropdownRef.current.contains(target) &&
+        !contextDropdownPanelRef.current?.contains(target)
+      ) {
+        setShowContextDropdown(false);
+      }
     };
     document.addEventListener('mousedown', handleOutsideClick);
     return () => document.removeEventListener('mousedown', handleOutsideClick);
@@ -278,6 +290,32 @@ export const ChatArea: React.FC = () => {
     () => ({ ...DEFAULT_MODEL_PRICING, ...store.modelPricing }),
     [store.modelPricing]
   );
+
+  const activeChat = useMemo(
+    () => store.chats.find((c) => c.id === store.activeChatId) || null,
+    [store.chats, store.activeChatId]
+  );
+
+  const contextWindow = useMemo(
+    () => resolveContextWindow(activeModel.id, store.contextWindowOverrides),
+    [activeModel.id, store.contextWindowOverrides]
+  );
+
+  const contextUsage = useMemo(() => {
+    const effectiveMessages = buildContextMessages(store.messages, {
+      memoryNote: activeChat?.memoryNote,
+      historyWindowLimit: activeChat?.historyWindowLimit ?? store.defaultHistoryWindowLimit ?? undefined,
+      summaryContent: activeChat?.summaryContent,
+      summaryUpToMessageId: activeChat?.summaryUpToMessageId,
+    });
+    return estimateContextUsage(
+      effectiveMessages,
+      activeChat?.systemPrompt || store.globalSystemPrompt,
+      activeChat?.memoryNote,
+      contextWindow,
+      (m) => m.content
+    );
+  }, [store.messages, activeChat, store.defaultHistoryWindowLimit, store.globalSystemPrompt, contextWindow]);
 
   const estimatedInputTokens = (() => {
     let text = inputText;
@@ -827,6 +865,100 @@ export const ChatArea: React.FC = () => {
               </HeaderDropdownPortal>
             </div>
           )}
+
+          {/* Context management */}
+          <div className="relative shrink-0" ref={contextDropdownRef}>
+            <button
+              onClick={() => setShowContextDropdown(!showContextDropdown)}
+              title={t.contextSettings}
+              aria-label={t.contextSettings}
+              aria-expanded={showContextDropdown}
+              className={`${toolbarBtnClass} ${contextUsage.usageRatio >= 0.8 ? 'text-amber-600 dark:text-amber-400' : ''}`}
+            >
+              <Sparkles className="w-3.5 h-3.5" />
+              <span className="font-heading hidden sm:inline">
+                {Math.round(contextUsage.usageRatio * 100)}%
+              </span>
+            </button>
+
+            <HeaderDropdownPortal
+              anchorRef={contextDropdownRef}
+              panelRef={contextDropdownPanelRef}
+              open={showContextDropdown}
+              desktopWidth={320}
+              className="rounded-2xl p-4 space-y-4"
+            >
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between text-[11px] font-bold text-gray-700 dark:text-gray-300">
+                  <span>{t.contextUsage}</span>
+                  <span className="font-mono text-gray-400">
+                    {contextUsage.estimatedTokens.toLocaleString()} / {contextUsage.contextWindow.toLocaleString()}
+                  </span>
+                </div>
+                <div className="h-1.5 rounded-full bg-bg-light dark:bg-bg-dark overflow-hidden">
+                  <div
+                    className={`h-full rounded-full transition-all ${contextUsage.usageRatio >= 0.8 ? 'bg-amber-500' : 'bg-blue-500'}`}
+                    style={{ width: `${Math.min(100, contextUsage.usageRatio * 100)}%` }}
+                  />
+                </div>
+              </div>
+
+              {activeChat && (
+                <>
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300">{t.memoryNote}</label>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">{t.memoryNoteDesc}</p>
+                    <textarea
+                      rows={3}
+                      value={activeChat.memoryNote || ''}
+                      onChange={(e) => store.updateChatMemoryNote(activeChat.id, e.target.value)}
+                      placeholder={t.memoryNotePlaceholder}
+                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100 resize-none"
+                    />
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300">{t.historyWindowLimit}</label>
+                    <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">{t.historyWindowLimitDesc}</p>
+                    <input
+                      type="number"
+                      min={1}
+                      value={activeChat.historyWindowLimit ?? ''}
+                      onChange={(e) => {
+                        const raw = e.target.value;
+                        store.updateChatHistoryWindowLimit(activeChat.id, raw === '' ? null : Math.max(1, Number(raw)));
+                      }}
+                      placeholder={String(store.defaultHistoryWindowLimit ?? '')}
+                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
+                    />
+                  </div>
+
+                  <div className="space-y-2 border-t border-border-light dark:border-border-dark pt-3">
+                    {activeChat.summaryContent ? (
+                      <div className="flex items-center justify-between gap-2">
+                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">{t.summaryActive}</span>
+                        <button
+                          onClick={() => store.clearChatSummary(activeChat.id)}
+                          className="px-2.5 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-red-500 rounded-md cursor-pointer transition-colors"
+                        >
+                          {t.clearSummary}
+                        </button>
+                      </div>
+                    ) : (
+                      <button
+                        onClick={() => store.summarizeChat(activeChat.id)}
+                        disabled={store.summarizingChatId === activeChat.id}
+                        className="w-full flex items-center justify-center space-x-1.5 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 disabled:opacity-50 text-blue-600 dark:text-sky-400 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        <span>{store.summarizingChatId === activeChat.id ? t.summarizing : t.summarizeNow}</span>
+                      </button>
+                    )}
+                  </div>
+                </>
+              )}
+            </HeaderDropdownPortal>
+          </div>
         </div>
 
         {/* Web Search Toggle — kept outside the scrollable toolbar strip so it's
@@ -891,7 +1023,7 @@ export const ChatArea: React.FC = () => {
                   id={`message-${msg.id}`}
                   className={`flex space-x-3 ${isUser ? 'justify-end' : 'justify-start'} animate-slide-up group transition-all duration-200 ${
                     highlightedMessageId === msg.id ? 'ring-2 ring-blue-500/25 ring-offset-8 ring-offset-transparent rounded-3xl' : ''
-                  }`}
+                  } ${msg.excludedFromContext ? 'opacity-45' : ''}`}
                 >
 
                   {/* AI Avatar — provider/model icon */}
@@ -1181,6 +1313,7 @@ export const ChatArea: React.FC = () => {
                           successLabel={t.copied}
                           onClick={() => navigator.clipboard.writeText(msg.content)}
                         />
+                        <ContextToggleButtons msg={msg} store={store} t={t} />
                       </div>
                     )}
 
@@ -1274,6 +1407,7 @@ export const ChatArea: React.FC = () => {
                           <GitFork className="w-3 h-3" />
                           <span>{t.branchCreate}</span>
                         </button>
+                        <ContextToggleButtons msg={msg} store={store} t={t} />
                       </div>
                     )}
                   </div>
@@ -1385,6 +1519,39 @@ const Sources: React.FC<{ citations: Citation[]; label: string }> = ({ citations
     </div>
   );
 };
+
+const ContextToggleButtons: React.FC<{
+  msg: Message;
+  store: Pick<ChatState, 'toggleMessageExcluded' | 'toggleMessagePinned'>;
+  t: { excludeFromContext: string; includeInContext: string; pinInContext: string; unpinFromContext: string };
+}> = ({ msg, store, t }) => (
+  <>
+    <button
+      onClick={() => store.toggleMessagePinned(msg.id)}
+      aria-pressed={!!msg.pinnedInContext}
+      title={msg.pinnedInContext ? t.unpinFromContext : t.pinInContext}
+      className={`flex items-center px-2 py-1.5 rounded-lg transition-colors cursor-pointer font-sans ${
+        msg.pinnedInContext
+          ? 'text-amber-500 dark:text-amber-400'
+          : 'text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark'
+      }`}
+    >
+      {msg.pinnedInContext ? <PinOff className="w-3 h-3" /> : <Pin className="w-3 h-3" />}
+    </button>
+    <button
+      onClick={() => store.toggleMessageExcluded(msg.id)}
+      aria-pressed={!!msg.excludedFromContext}
+      title={msg.excludedFromContext ? t.includeInContext : t.excludeFromContext}
+      className={`flex items-center px-2 py-1.5 rounded-lg transition-colors cursor-pointer font-sans ${
+        msg.excludedFromContext
+          ? 'text-red-500 dark:text-red-400'
+          : 'text-gray-400 dark:text-gray-500 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-card-light dark:hover:bg-card-dark'
+      }`}
+    >
+      {msg.excludedFromContext ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+    </button>
+  </>
+);
 
 const UsageBadge: React.FC<{
   usage: TokenUsage;
