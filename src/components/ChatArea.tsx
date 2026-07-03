@@ -24,7 +24,8 @@ import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import {
   Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Pencil,
-  ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe, Pin, EyeOff, Eye, PinOff, Sparkles
+  ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe, Pin, EyeOff, Eye, PinOff, Sparkles,
+  SlidersHorizontal
 } from 'lucide-react';
 import { ModelIcon } from './ModelIcon';
 
@@ -124,6 +125,7 @@ export const ChatArea: React.FC = () => {
   const [showEffortDropdown, setShowEffortDropdown] = useState(false);
   const [showPromptDropdown, setShowPromptDropdown] = useState(false);
   const [showContextDropdown, setShowContextDropdown] = useState(false);
+  const [showMoreDropdown, setShowMoreDropdown] = useState(false);
 
   const [compareStates, setCompareStates] = useState<Record<string, boolean>>({});
   const [compareDropdownOpen, setCompareDropdownOpen] = useState<string | null>(null);
@@ -147,10 +149,12 @@ export const ChatArea: React.FC = () => {
   const effortDropdownRef = useRef<HTMLDivElement>(null);
   const promptDropdownRef = useRef<HTMLDivElement>(null);
   const contextDropdownRef = useRef<HTMLDivElement>(null);
+  const moreDropdownRef = useRef<HTMLDivElement>(null);
   const modelDropdownPanelRef = useRef<HTMLDivElement>(null);
   const effortDropdownPanelRef = useRef<HTMLDivElement>(null);
   const promptDropdownPanelRef = useRef<HTMLDivElement>(null);
   const contextDropdownPanelRef = useRef<HTMLDivElement>(null);
+  const moreDropdownPanelRef = useRef<HTMLDivElement>(null);
   const dropdownCompareRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const messagesContainerRef = useRef<HTMLDivElement>(null);
@@ -240,6 +244,13 @@ export const ChatArea: React.FC = () => {
         !contextDropdownPanelRef.current?.contains(target)
       ) {
         setShowContextDropdown(false);
+      }
+      if (
+        moreDropdownRef.current &&
+        !moreDropdownRef.current.contains(target) &&
+        !moreDropdownPanelRef.current?.contains(target)
+      ) {
+        setShowMoreDropdown(false);
       }
     };
     document.addEventListener('mousedown', handleOutsideClick);
@@ -375,6 +386,138 @@ export const ChatArea: React.FC = () => {
     }
     return [...baseOptions, { value: 'custom_input', label: t.effortCustom }];
   };
+
+  const renderEffortOptions = (onSelected: () => void) =>
+    getEffortOptions().map((opt) =>
+      opt.value === 'custom_input' ? (
+        customEffortVisible ? (
+          <form
+            key="custom_form"
+            onSubmit={(e) => {
+              e.preventDefault();
+              store.setActiveEffort(customEffortValue.trim() || 'none');
+              setCustomEffortVisible(false);
+              setCustomEffortValue('');
+              onSelected();
+            }}
+            className="p-1.5 flex space-x-1"
+          >
+            <input
+              type="text"
+              value={customEffortValue}
+              onChange={(e) => setCustomEffortValue(e.target.value)}
+              placeholder={t.effortCustomPlaceholder}
+              className="flex-1 px-2 py-1 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+              autoFocus
+            />
+            <button
+              type="submit"
+              className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-colors"
+            >
+              OK
+            </button>
+          </form>
+        ) : (
+          <button
+            key={opt.value}
+            onClick={() => setCustomEffortVisible(true)}
+            className="w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 transition-colors cursor-pointer text-gray-700 dark:text-gray-300"
+          >
+            {opt.label}
+          </button>
+        )
+      ) : (
+        <button
+          key={opt.value}
+          onClick={() => {
+            store.setActiveEffort(opt.value);
+            onSelected();
+          }}
+          className={`w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 flex items-center justify-between transition-colors cursor-pointer ${
+            store.activeEffort === opt.value
+              ? 'text-blue-600 dark:text-sky-400 font-semibold bg-blue-500/6 dark:bg-blue-500/10'
+              : 'text-gray-700 dark:text-gray-300'
+          }`}
+        >
+          <span>{opt.label}</span>
+          {store.activeEffort === opt.value && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />}
+        </button>
+      )
+    );
+
+  const contextPanelContent = (
+    <>
+      <div className="space-y-1.5">
+        <div className="flex items-center justify-between text-[11px] font-bold text-gray-700 dark:text-gray-300">
+          <span>{t.contextUsage}</span>
+          <span className="font-mono text-gray-400">
+            {contextUsage.estimatedTokens.toLocaleString()} / {contextUsage.contextWindow.toLocaleString()}
+          </span>
+        </div>
+        <div className="h-1.5 rounded-full bg-bg-light dark:bg-bg-dark overflow-hidden">
+          <div
+            className={`h-full rounded-full transition-all ${contextUsage.usageRatio >= 0.8 ? 'bg-amber-500' : 'bg-blue-500'}`}
+            style={{ width: `${Math.min(100, contextUsage.usageRatio * 100)}%` }}
+          />
+        </div>
+      </div>
+
+      {activeChat && (
+        <>
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300">{t.memoryNote}</label>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">{t.memoryNoteDesc}</p>
+            <textarea
+              rows={3}
+              value={activeChat.memoryNote || ''}
+              onChange={(e) => store.updateChatMemoryNote(activeChat.id, e.target.value)}
+              placeholder={t.memoryNotePlaceholder}
+              className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100 resize-none"
+            />
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300">{t.historyWindowLimit}</label>
+            <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">{t.historyWindowLimitDesc}</p>
+            <input
+              type="number"
+              min={1}
+              value={activeChat.historyWindowLimit ?? ''}
+              onChange={(e) => {
+                const raw = e.target.value;
+                store.updateChatHistoryWindowLimit(activeChat.id, raw === '' ? null : Math.max(1, Number(raw)));
+              }}
+              placeholder={String(store.defaultHistoryWindowLimit ?? '')}
+              className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
+            />
+          </div>
+
+          <div className="space-y-2 border-t border-border-light dark:border-border-dark pt-3">
+            {activeChat.summaryContent ? (
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">{t.summaryActive}</span>
+                <button
+                  onClick={() => store.clearChatSummary(activeChat.id)}
+                  className="px-2.5 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-red-500 rounded-md cursor-pointer transition-colors"
+                >
+                  {t.clearSummary}
+                </button>
+              </div>
+            ) : (
+              <button
+                onClick={() => store.summarizeChat(activeChat.id)}
+                disabled={store.summarizingChatId === activeChat.id}
+                className="w-full flex items-center justify-center space-x-1.5 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 disabled:opacity-50 text-blue-600 dark:text-sky-400 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>{store.summarizingChatId === activeChat.id ? t.summarizing : t.summarizeNow}</span>
+              </button>
+            )}
+          </div>
+        </>
+      )}
+    </>
+  );
 
   const handleModelSelect = async (providerId: string, modelId: string) => {
     await store.setActiveModelId(modelId, providerId);
@@ -744,8 +887,8 @@ export const ChatArea: React.FC = () => {
             </HeaderDropdownPortal>
           </div>
 
-          {/* Effort Selector */}
-          <div className="relative shrink-0" ref={effortDropdownRef}>
+          {/* Effort Selector — hidden on mobile, folded into the "More" menu */}
+          <div className="hidden md:block relative shrink-0" ref={effortDropdownRef}>
             <button
               onClick={() => {
                 setShowEffortDropdown(!showEffortDropdown);
@@ -770,62 +913,7 @@ export const ChatArea: React.FC = () => {
               desktopWidth={200}
               className="rounded-2xl p-1.5"
             >
-              {getEffortOptions().map((opt) =>
-                opt.value === 'custom_input' ? (
-                  customEffortVisible ? (
-                    <form
-                      key="custom_form"
-                      onSubmit={(e) => {
-                        e.preventDefault();
-                        store.setActiveEffort(customEffortValue.trim() || 'none');
-                        setCustomEffortVisible(false);
-                        setCustomEffortValue('');
-                        setShowEffortDropdown(false);
-                      }}
-                      className="p-1.5 flex space-x-1"
-                    >
-                      <input
-                        type="text"
-                        value={customEffortValue}
-                        onChange={(e) => setCustomEffortValue(e.target.value)}
-                        placeholder={t.effortCustomPlaceholder}
-                        className="flex-1 px-2 py-1 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 text-gray-900 dark:text-gray-100 placeholder-gray-400"
-                        autoFocus
-                      />
-                      <button
-                        type="submit"
-                        className="px-2 py-1 bg-blue-600 hover:bg-blue-700 text-white rounded-lg text-[10px] font-bold cursor-pointer transition-colors"
-                      >
-                        OK
-                      </button>
-                    </form>
-                  ) : (
-                    <button
-                      key={opt.value}
-                      onClick={() => setCustomEffortVisible(true)}
-                      className="w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 transition-colors cursor-pointer text-gray-700 dark:text-gray-300"
-                    >
-                      {opt.label}
-                    </button>
-                  )
-                ) : (
-                  <button
-                    key={opt.value}
-                    onClick={() => {
-                      store.setActiveEffort(opt.value);
-                      setShowEffortDropdown(false);
-                    }}
-                    className={`w-full text-left px-3.5 py-2 rounded-lg text-xs hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 flex items-center justify-between transition-colors cursor-pointer ${
-                      store.activeEffort === opt.value
-                        ? 'text-blue-600 dark:text-sky-400 font-semibold bg-blue-500/6 dark:bg-blue-500/10'
-                        : 'text-gray-700 dark:text-gray-300'
-                    }`}
-                  >
-                    <span>{opt.label}</span>
-                    {store.activeEffort === opt.value && <Check className="w-3.5 h-3.5 text-blue-600 dark:text-sky-400" />}
-                  </button>
-                )
-              )}
+              {renderEffortOptions(() => setShowEffortDropdown(false))}
             </HeaderDropdownPortal>
           </div>
 
@@ -866,8 +954,8 @@ export const ChatArea: React.FC = () => {
             </div>
           )}
 
-          {/* Context management */}
-          <div className="relative shrink-0" ref={contextDropdownRef}>
+          {/* Context management — hidden on mobile, folded into the "More" menu */}
+          <div className="hidden md:block relative shrink-0" ref={contextDropdownRef}>
             <button
               onClick={() => setShowContextDropdown(!showContextDropdown)}
               title={t.contextSettings}
@@ -888,90 +976,82 @@ export const ChatArea: React.FC = () => {
               desktopWidth={320}
               className="rounded-2xl p-4 space-y-4"
             >
+              {contextPanelContent}
+            </HeaderDropdownPortal>
+          </div>
+
+          {/* Mobile-only combined menu: Effort + Web Search + Context management,
+              so the toolbar strip doesn't need horizontal scrolling on narrow screens */}
+          <div className="relative shrink-0 md:hidden" ref={moreDropdownRef}>
+            <button
+              onClick={() => setShowMoreDropdown(!showMoreDropdown)}
+              title={t.moreOptions}
+              aria-label={t.moreOptions}
+              aria-expanded={showMoreDropdown}
+              className={`${toolbarBtnClass} ${
+                contextUsage.usageRatio >= 0.8 || store.activeWebSearch ? 'text-blue-600 dark:text-sky-400' : ''
+              }`}
+            >
+              <SlidersHorizontal className="w-3.5 h-3.5" />
+              <span className="font-heading">{Math.round(contextUsage.usageRatio * 100)}%</span>
+            </button>
+
+            <HeaderDropdownPortal
+              anchorRef={moreDropdownRef}
+              panelRef={moreDropdownPanelRef}
+              open={showMoreDropdown}
+              desktopWidth={320}
+              className="rounded-2xl p-4 space-y-4"
+            >
               <div className="space-y-1.5">
-                <div className="flex items-center justify-between text-[11px] font-bold text-gray-700 dark:text-gray-300">
-                  <span>{t.contextUsage}</span>
-                  <span className="font-mono text-gray-400">
-                    {contextUsage.estimatedTokens.toLocaleString()} / {contextUsage.contextWindow.toLocaleString()}
-                  </span>
-                </div>
-                <div className="h-1.5 rounded-full bg-bg-light dark:bg-bg-dark overflow-hidden">
-                  <div
-                    className={`h-full rounded-full transition-all ${contextUsage.usageRatio >= 0.8 ? 'bg-amber-500' : 'bg-blue-500'}`}
-                    style={{ width: `${Math.min(100, contextUsage.usageRatio * 100)}%` }}
-                  />
-                </div>
+                <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{t.effortLabel}</div>
+                <div className="space-y-0.5">{renderEffortOptions(() => {})}</div>
               </div>
 
-              {activeChat && (
-                <>
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300">{t.memoryNote}</label>
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">{t.memoryNoteDesc}</p>
-                    <textarea
-                      rows={3}
-                      value={activeChat.memoryNote || ''}
-                      onChange={(e) => store.updateChatMemoryNote(activeChat.id, e.target.value)}
-                      placeholder={t.memoryNotePlaceholder}
-                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100 resize-none"
+              {supportsWebSearch && (
+                <div className="flex items-center justify-between border-t border-border-light dark:border-border-dark pt-3">
+                  <span className="flex items-center gap-1.5 text-xs font-semibold text-gray-700 dark:text-gray-300">
+                    <Globe className="w-3.5 h-3.5 text-gray-400" />
+                    {t.webSearchLabel}
+                  </span>
+                  <button
+                    onClick={() => store.setActiveWebSearch(!store.activeWebSearch)}
+                    role="switch"
+                    aria-checked={store.activeWebSearch}
+                    aria-label={t.webSearchLabel}
+                    className={`relative w-9 h-5 rounded-full shrink-0 transition-colors cursor-pointer ${
+                      store.activeWebSearch ? 'bg-blue-600' : 'bg-gray-300 dark:bg-white/10'
+                    }`}
+                  >
+                    <span
+                      className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                        store.activeWebSearch ? 'translate-x-4' : ''
+                      }`}
                     />
-                  </div>
-
-                  <div className="space-y-1.5">
-                    <label className="block text-[11px] font-bold text-gray-700 dark:text-gray-300">{t.historyWindowLimit}</label>
-                    <p className="text-[10px] text-gray-400 dark:text-gray-500 leading-relaxed">{t.historyWindowLimitDesc}</p>
-                    <input
-                      type="number"
-                      min={1}
-                      value={activeChat.historyWindowLimit ?? ''}
-                      onChange={(e) => {
-                        const raw = e.target.value;
-                        store.updateChatHistoryWindowLimit(activeChat.id, raw === '' ? null : Math.max(1, Number(raw)));
-                      }}
-                      placeholder={String(store.defaultHistoryWindowLimit ?? '')}
-                      className="w-full px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
-                    />
-                  </div>
-
-                  <div className="space-y-2 border-t border-border-light dark:border-border-dark pt-3">
-                    {activeChat.summaryContent ? (
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">{t.summaryActive}</span>
-                        <button
-                          onClick={() => store.clearChatSummary(activeChat.id)}
-                          className="px-2.5 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-red-500 rounded-md cursor-pointer transition-colors"
-                        >
-                          {t.clearSummary}
-                        </button>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => store.summarizeChat(activeChat.id)}
-                        disabled={store.summarizingChatId === activeChat.id}
-                        className="w-full flex items-center justify-center space-x-1.5 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 disabled:opacity-50 text-blue-600 dark:text-sky-400 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
-                      >
-                        <Sparkles className="w-3.5 h-3.5" />
-                        <span>{store.summarizingChatId === activeChat.id ? t.summarizing : t.summarizeNow}</span>
-                      </button>
-                    )}
-                  </div>
-                </>
+                  </button>
+                </div>
               )}
+
+              <div className="border-t border-border-light dark:border-border-dark pt-3 space-y-4">
+                <div className="text-[10px] font-bold text-gray-400 dark:text-gray-500 uppercase tracking-widest">{t.contextSettings}</div>
+                {contextPanelContent}
+              </div>
             </HeaderDropdownPortal>
           </div>
         </div>
 
-        {/* Web Search Toggle — kept outside the scrollable toolbar strip so it's
+        {/* Web Search Toggle (desktop) — kept outside the scrollable toolbar strip so it's
             always fully visible and never requires a scroll gesture to reach;
             a tap that starts inside a horizontally-scrolling row can be
-            swallowed by the browser's scroll/tap disambiguation. */}
+            swallowed by the browser's scroll/tap disambiguation. Hidden on mobile,
+            where it's folded into the "More" menu above. */}
         {supportsWebSearch && (
           <button
             onClick={() => store.setActiveWebSearch(!store.activeWebSearch)}
             title={t.webSearchTooltip}
             aria-label={t.webSearchLabel}
             aria-pressed={store.activeWebSearch}
-            className={`${toolbarBtnClass} shrink-0 ${
+            className={`${toolbarBtnClass} hidden md:flex shrink-0 ${
               store.activeWebSearch
                 ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-sky-400'
                 : ''
