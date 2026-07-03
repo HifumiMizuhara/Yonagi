@@ -586,12 +586,13 @@ export const useChatStore = create<ChatState>((set, get) => {
       const activeModelId = replaceRetiredModel(storedActiveModelId);
       const activeEffort = getSetting<string>('activeEffort') || 'none';
       const activeWebSearch = getSetting<unknown>('activeWebSearch') === true || getSetting<unknown>('activeWebSearch') === 'true';
-      // Default the sidebar closed on phones (it's an overlay there); honor any
-      // explicitly stored preference on every viewport.
+      // Always start closed on phones — the sidebar renders as a full-screen
+      // overlay there, so honoring a stored "open" value would greet the user
+      // with the chat list covering the whole screen on every launch.
       const isMobile = typeof window !== 'undefined' && window.innerWidth < 768;
-      const sidebarRaw = settingsMap['sidebarOpen'] !== undefined
-        ? settingsMap['sidebarOpen']
-        : (isMobile ? 'false' : DEFAULT_SETTINGS['sidebarOpen']);
+      const sidebarRaw = isMobile
+        ? 'false'
+        : (settingsMap['sidebarOpen'] !== undefined ? settingsMap['sidebarOpen'] : DEFAULT_SETTINGS['sidebarOpen']);
 
       let loadedProviders = getSetting<Record<string, ProviderConfig>>('providers');
       if (!loadedProviders || typeof loadedProviders !== 'object') {

@@ -24,8 +24,28 @@ const App: React.FC = () => {
     void init();
   }, [init]);
 
+  // iOS Safari doesn't shrink the layout viewport when the on-screen keyboard
+  // opens, so `100dvh` stays taller than what's actually visible and the
+  // composer/footer can end up hidden behind the keyboard. Track the visual
+  // viewport height explicitly and use it to cap the app shell height.
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    if (!viewport) return;
+    const updateHeight = () => {
+      document.documentElement.style.setProperty('--app-height', `${viewport.height}px`);
+    };
+    updateHeight();
+    viewport.addEventListener('resize', updateHeight);
+    viewport.addEventListener('scroll', updateHeight);
+    return () => {
+      viewport.removeEventListener('resize', updateHeight);
+      viewport.removeEventListener('scroll', updateHeight);
+    };
+  }, []);
+
   return (
-    <div className="app-shell flex h-dvh w-screen overflow-hidden text-gray-800 dark:text-gray-100 font-sans antialiased">
+    <div className="app-shell flex h-dvh w-screen overflow-hidden text-gray-800 dark:text-gray-100 font-sans antialiased" style={{ height: 'var(--app-height, 100dvh)' }}>
+
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-0 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-sky-200/35 blur-3xl dark:bg-sky-500/10" />
       </div>

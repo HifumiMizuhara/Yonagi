@@ -15,6 +15,7 @@ import {
 } from '../utils/fileParser';
 import { estimateTokens, formatCost, DEFAULT_MODEL_PRICING, selectUsageCost } from '../utils/tokens';
 import { claudeSupportsXHigh } from '../utils/providerCompatibility';
+import { isTouchPrimaryDevice } from '../utils/device';
 import { SafeMarkdownLink } from '../utils/markdownComponents';
 import { sanitizeHref } from '../utils/safeUrl';
 import ReactMarkdown from 'react-markdown';
@@ -490,7 +491,10 @@ export const ChatArea: React.FC = () => {
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.nativeEvent.isComposing) return;
-    if (e.key === 'Enter' && !e.shiftKey) {
+    // On touch devices there's no practical Shift+Enter, so Enter should
+    // insert a newline like any other soft-keyboard app; only devices with a
+    // real keyboard get Enter-to-send.
+    if (e.key === 'Enter' && !e.shiftKey && !isTouchPrimaryDevice()) {
       e.preventDefault();
       handleSend();
     }
@@ -527,7 +531,7 @@ export const ChatArea: React.FC = () => {
               <button
                 onClick={() => removeAttachment(idx)}
                 aria-label={`${t.delete}: ${att.name}`}
-                className="p-0.5 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 cursor-pointer transition-colors ml-0.5"
+                className="p-2 rounded-full hover:bg-gray-100 dark:hover:bg-gray-800 text-gray-400 hover:text-red-500 cursor-pointer transition-colors ml-0.5"
               >
                 <X className="w-3 h-3" />
               </button>
@@ -652,7 +656,7 @@ export const ChatArea: React.FC = () => {
                   value={modelSearchQuery}
                   onChange={(e) => setModelSearchQuery(e.target.value)}
                   className="w-full pl-8 pr-3 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-xs border border-border-light dark:border-white/8 rounded-xl focus:outline-none focus:border-blue-500 focus:ring-2 focus:ring-blue-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
-                  autoFocus
+                  autoFocus={!isTouchPrimaryDevice()}
                 />
                 <Search className="absolute left-4 top-[15px] w-3.5 h-3.5 text-gray-400" />
               </div>
@@ -782,23 +786,6 @@ export const ChatArea: React.FC = () => {
             </HeaderDropdownPortal>
           </div>
 
-          {/* Web Search Toggle */}
-          {supportsWebSearch && (
-            <button
-              onClick={() => store.setActiveWebSearch(!store.activeWebSearch)}
-              title={t.webSearchTooltip}
-              aria-label={t.webSearchLabel}
-              className={`${toolbarBtnClass} ${
-                store.activeWebSearch
-                  ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-sky-400'
-                  : ''
-              }`}
-            >
-              <Globe className="w-3.5 h-3.5 shrink-0" />
-              <span className="font-heading hidden sm:inline">{t.webSearchLabel}</span>
-            </button>
-          )}
-
           {/* Prompt Presets */}
           {store.promptPresets.length > 0 && (
             <div className="relative shrink-0" ref={promptDropdownRef}>
@@ -836,6 +823,27 @@ export const ChatArea: React.FC = () => {
             </div>
           )}
         </div>
+
+        {/* Web Search Toggle — kept outside the scrollable toolbar strip so it's
+            always fully visible and never requires a scroll gesture to reach;
+            a tap that starts inside a horizontally-scrolling row can be
+            swallowed by the browser's scroll/tap disambiguation. */}
+        {supportsWebSearch && (
+          <button
+            onClick={() => store.setActiveWebSearch(!store.activeWebSearch)}
+            title={t.webSearchTooltip}
+            aria-label={t.webSearchLabel}
+            aria-pressed={store.activeWebSearch}
+            className={`${toolbarBtnClass} shrink-0 ${
+              store.activeWebSearch
+                ? 'bg-blue-500/10 border-blue-500/30 text-blue-600 dark:text-sky-400'
+                : ''
+            }`}
+          >
+            <Globe className="w-3.5 h-3.5 shrink-0" />
+            <span className="font-heading hidden sm:inline">{t.webSearchLabel}</span>
+          </button>
+        )}
 
         {/* Status indicator */}
         <div aria-live="polite" className={`gemini-chip flex items-center space-x-1.5 text-[10px] font-semibold px-3 py-1.5 rounded-full hidden sm:flex transition-all ${
@@ -905,7 +913,7 @@ export const ChatArea: React.FC = () => {
                               disabled={activeIndex === 0}
                               onClick={() => store.switchMessageVariant(msg.id, activeIndex - 1)}
                               aria-label={t.previousVariant}
-                              className="p-0.5 rounded hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                              className="p-1.5 rounded hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                               <ChevronLeft className="w-3 h-3" />
                             </button>
@@ -914,7 +922,7 @@ export const ChatArea: React.FC = () => {
                               disabled={activeIndex === totalVariants - 1}
                               onClick={() => store.switchMessageVariant(msg.id, activeIndex + 1)}
                               aria-label={t.nextVariant}
-                              className="p-0.5 rounded hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
+                              className="p-1.5 rounded hover:bg-bg-light dark:hover:bg-bg-dark transition-colors cursor-pointer disabled:opacity-30 disabled:cursor-not-allowed"
                             >
                               <ChevronRight className="w-3 h-3" />
                             </button>
@@ -927,7 +935,7 @@ export const ChatArea: React.FC = () => {
                         <button
                           onClick={() => setCompareStates({ ...compareStates, [msg.id]: !isCompareMode })}
                           aria-label={isCompareMode ? t.normalView : t.compareView}
-                          className={`flex items-center space-x-1 px-2 py-0.5 rounded-lg border transition-all cursor-pointer text-[9px] font-semibold ${
+                          className={`flex items-center space-x-1 px-2 py-2 rounded-lg border transition-all cursor-pointer text-[9px] font-semibold ${
                             isCompareMode
                               ? 'bg-blue-500/10 text-blue-600 dark:text-sky-400 border-blue-500/25'
                               : 'bg-card-light/70 dark:bg-card-dark/60 border-border-light/50 dark:border-border-dark/50 text-gray-400 hover:text-blue-600'
@@ -1214,7 +1222,7 @@ export const ChatArea: React.FC = () => {
                                   onChange={(e) => setCompareSearchQuery(e.target.value)}
                                   onClick={(e) => e.stopPropagation()}
                                   className="w-full pl-7 pr-2 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-[10px] border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
-                                  autoFocus
+                                  autoFocus={!isTouchPrimaryDevice()}
                                 />
                                 <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
                               </div>
@@ -1277,7 +1285,7 @@ export const ChatArea: React.FC = () => {
             </div>
           </div>
 
-          <div className="px-3 sm:px-4 pt-3 pb-safe shrink-0">
+          <div className="px-3 sm:px-4 pt-3 pb-1 shrink-0">
             <div className="max-w-4xl mx-auto">
               {composerBox}
               {composerTokenHint}
@@ -1347,7 +1355,7 @@ const Sources: React.FC<{ citations: Citation[]; label: string }> = ({ citations
               <span className="truncate">{c.title || hostOf(c.url)}</span>
             </>
           );
-          const className = "flex items-center space-x-1.5 max-w-[260px] px-2.5 py-1 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-[11px] text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 hover:border-blue-500/30 transition-colors";
+          const className = "flex items-center space-x-1.5 max-w-[260px] px-2.5 py-2 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg text-[11px] text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 hover:border-blue-500/30 transition-colors";
           if (!safeHref) {
             return (
               <span key={`${c.url}-${i}`} title={c.title || c.url} className={`${className} cursor-default`}>

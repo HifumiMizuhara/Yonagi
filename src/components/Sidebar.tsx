@@ -169,21 +169,21 @@ export const Sidebar: React.FC = () => {
             <button
               onClick={(e) => { e.stopPropagation(); setFolderMenuChatId(showFolderMenu ? null : chat.id); }}
               aria-label={t.moveToFolder}
-              className="min-w-8 min-h-8 md:min-w-9 md:min-h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+              className="min-w-9 h-full md:min-w-9 md:h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
             >
               <MoreHorizontal className="w-3 h-3" />
             </button>
             <button
               onClick={(e) => handleStartRename(chat, e)}
               aria-label={t.rename}
-              className="min-w-8 min-h-8 md:min-w-9 md:min-h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+              className="min-w-9 h-full md:min-w-9 md:h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
             >
               <Edit2 className="w-3 h-3" />
             </button>
             <button
               onClick={(e) => handleDeleteChat(chat.id, e)}
               aria-label={t.delete}
-              className="min-w-8 min-h-8 md:min-w-9 md:min-h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+              className="min-w-9 h-full md:min-w-9 md:h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
             >
               <Trash2 className="w-3 h-3" />
             </button>
@@ -191,18 +191,18 @@ export const Sidebar: React.FC = () => {
         )}
 
         {isEditing && (
-          <div className="flex space-x-0.5 ml-1 shrink-0">
+          <div className="flex items-stretch space-x-0.5 ml-1 mr-1 shrink-0">
             <button
               onClick={(e) => handleSaveRename(chat.id, e)}
               aria-label={t.save}
-              className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"
+              className="min-w-9 px-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer flex items-center justify-center"
             >
               <Check className="w-3 h-3" />
             </button>
             <button
               onClick={(e) => handleCancelRename(e)}
               aria-label={t.cancel}
-              className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"
+              className="min-w-9 px-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer flex items-center justify-center"
             >
               <X className="w-3 h-3" />
             </button>
@@ -413,8 +413,8 @@ export const Sidebar: React.FC = () => {
                 autoFocus
                 className="flex-1 min-w-0 bg-transparent border-b border-blue-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5"
               />
-              <button onClick={handleCreateFolder} className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"><Check className="w-3 h-3" /></button>
-              <button onClick={() => { setCreatingFolder(false); setNewFolderName(''); }} className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"><X className="w-3 h-3" /></button>
+              <button onClick={handleCreateFolder} aria-label={t.save} className="min-w-9 min-h-9 flex items-center justify-center text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"><Check className="w-3 h-3" /></button>
+              <button onClick={() => { setCreatingFolder(false); setNewFolderName(''); }} aria-label={t.cancel} className="min-w-9 min-h-9 flex items-center justify-center text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"><X className="w-3 h-3" /></button>
             </div>
           )}
 
@@ -444,7 +444,7 @@ export const Sidebar: React.FC = () => {
 
                 return (
                   <div key={folder.id} className="space-y-0.5">
-                    <div className="group flex items-center min-h-9 px-2 rounded-xl hover:bg-white/70 dark:hover:bg-white/4 transition-colors">
+                    <div className="group flex items-center min-h-11 md:min-h-9 px-2 rounded-xl hover:bg-white/70 dark:hover:bg-white/4 transition-colors">
                       {isEditingFolder ? (
                         <div className="flex items-center gap-1 flex-1 min-w-0">
                           <Folder className="w-3.5 h-3.5 text-blue-500 shrink-0" />
@@ -459,8 +459,8 @@ export const Sidebar: React.FC = () => {
                             autoFocus
                             className="flex-1 min-w-0 bg-transparent border-b border-blue-500 focus:outline-none text-gray-900 dark:text-gray-100 text-xs py-0.5"
                           />
-                          <button onClick={() => handleSaveFolderRename(folder.id)} className="p-1 text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"><Check className="w-3 h-3" /></button>
-                          <button onClick={() => setEditingFolderId(null)} className="p-1 text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"><X className="w-3 h-3" /></button>
+                          <button onClick={() => handleSaveFolderRename(folder.id)} aria-label={t.save} className="min-w-9 min-h-9 flex items-center justify-center text-accent-green hover:bg-accent-green/10 rounded-md cursor-pointer"><Check className="w-3 h-3" /></button>
+                          <button onClick={() => setEditingFolderId(null)} aria-label={t.cancel} className="min-w-9 min-h-9 flex items-center justify-center text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer"><X className="w-3 h-3" /></button>
                         </div>
                       ) : (
                         <>
@@ -477,14 +477,14 @@ export const Sidebar: React.FC = () => {
                             <button
                               onClick={() => { setEditingFolderId(folder.id); setEditFolderName(folder.name); }}
                               aria-label={t.renameFolder}
-                              className="min-w-8 min-h-8 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
+                              className="min-w-9 h-full md:h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 dark:hover:text-sky-400 hover:bg-white/80 dark:hover:bg-white/8 rounded-md cursor-pointer transition-colors"
                             >
                               <Edit2 className="w-3 h-3" />
                             </button>
                             <button
                               onClick={() => setPendingDeleteFolderId(folder.id)}
                               aria-label={t.deleteFolder}
-                              className="min-w-8 min-h-8 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+                              className="min-w-9 h-full md:h-9 flex items-center justify-center text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
                             >
                               <Trash2 className="w-3 h-3" />
                             </button>

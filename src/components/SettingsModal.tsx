@@ -379,7 +379,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
         aria-modal="true"
         aria-labelledby="settings-dialog-title"
         tabIndex={-1}
-        className="relative flex flex-col w-full max-w-4xl h-[90vh] md:h-[650px] bg-card-light dark:bg-sidebar-dark md:bg-card-light/95 md:dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans md:backdrop-blur-2xl"
+        className="relative flex flex-col w-full max-w-4xl h-[90dvh] md:h-[650px] bg-card-light dark:bg-sidebar-dark md:bg-card-light/95 md:dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans md:backdrop-blur-2xl"
       >
         
         {/* Header */}
