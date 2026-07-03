@@ -10,12 +10,19 @@ export const DEFAULT_CONTEXT_WINDOWS: Record<string, number> = {
   'gpt-4o': 128_000,
   'gpt-4.1-mini': 1_047_576,
   'gpt-4.1': 1_047_576,
+  'gpt-5.2': 400_000,
+  'gpt-5.1': 400_000,
   'gpt-5': 400_000,
   'o1': 200_000,
   'o3-mini': 200_000,
+  'o3': 200_000,
+  'o4-mini': 200_000,
+  // Claude's standard window is 200k; the 1M window requires the
+  // `context-1m-*` beta header, which this app does not currently send.
   'claude-3-5-haiku': 200_000,
   'claude-3-5-sonnet': 200_000,
   'claude-3-7-sonnet': 200_000,
+  'claude-fable-5': 200_000,
   'claude-sonnet': 200_000,
   'claude-opus': 200_000,
   'claude-haiku': 200_000,
@@ -25,6 +32,7 @@ export const DEFAULT_CONTEXT_WINDOWS: Record<string, number> = {
   'gemini-2.5-flash': 1_000_000,
   'gemini-2.5-pro': 1_000_000,
   'gemini-3.5-flash': 1_000_000,
+  'gemini-3': 1_000_000,
   'deepseek-chat': 64_000,
   'deepseek-reasoner': 64_000,
 };

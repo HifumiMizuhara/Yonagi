@@ -33,14 +33,14 @@ export const UnlockModal: React.FC = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in">
+    <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-fade-in touch-none overscroll-none">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="unlock-dialog-title"
         tabIndex={-1}
-        className="relative flex flex-col w-full max-w-sm bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/40 overflow-hidden font-sans backdrop-blur-2xl p-7 space-y-5"
+        className="relative flex flex-col w-full max-w-sm bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/40 overflow-hidden font-sans backdrop-blur-2xl p-7 space-y-5 touch-none"
       >
         <div className="flex flex-col items-center text-center space-y-3 select-none">
           <div className="w-14 h-14 rounded-2xl bg-gradient-to-tr from-amber-500/20 to-yellow-400/20 flex items-center justify-center text-amber-600 dark:text-amber-500 border border-amber-500/20">

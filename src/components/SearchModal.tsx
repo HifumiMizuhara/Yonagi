@@ -67,7 +67,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
 
   return (
     <div
-      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-md p-4 pt-[8dvh] sm:pt-[12dvh] animate-fade-in"
+      className="fixed inset-0 z-50 flex items-start justify-center bg-black/70 backdrop-blur-md p-4 pt-[8dvh] sm:pt-[12dvh] animate-fade-in touch-none overscroll-none"
       onClick={onClose}
     >
       <div
@@ -76,7 +76,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
         aria-modal="true"
         aria-labelledby="search-dialog-title"
         tabIndex={-1}
-        className="relative flex flex-col w-full max-w-2xl max-h-[80dvh] sm:max-h-[70dvh] bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans backdrop-blur-2xl"
+        className="relative flex flex-col w-full max-w-2xl max-h-[80dvh] sm:max-h-[70dvh] bg-card-light/95 dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans backdrop-blur-2xl touch-none"
         onClick={(e) => e.stopPropagation()}
       >
         <h2 id="search-dialog-title" className="sr-only">{t.search}</h2>
@@ -110,7 +110,7 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
         </div>
 
         {/* Results */}
-        <div className="flex-1 overflow-y-auto p-2">
+        <div className="flex-1 overflow-y-auto touch-pan-y p-2">
           {!query.trim() ? (
             <div className="flex flex-col items-center justify-center py-16 text-center text-xs text-gray-400 dark:text-gray-500 space-y-2 select-none">
 	              <Search className="w-8 h-8 stroke-[1.2] text-amber-500/40" />

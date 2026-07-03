@@ -161,6 +161,10 @@ export const translations = {
     priceInputLabel: '入力 $/1M',
     priceOutputLabel: '出力 $/1M',
     costUnknown: '単価未設定',
+    contextWindows: 'コンテキスト上限',
+    contextWindowsDesc: 'モデルごとの入力コンテキスト上限(トークン数)を設定します。部分一致で適用され、未設定のモデルには既定値が使われます。',
+    addContextWindow: '上限を追加',
+    contextWindowPlaceholder: 'トークン数 (例: 1000000)',
 
     // Key encryption
     security: 'セキュリティ',
@@ -387,6 +391,10 @@ export const translations = {
     priceInputLabel: 'Input $/1M',
     priceOutputLabel: 'Output $/1M',
     costUnknown: 'No price set',
+    contextWindows: 'Context windows',
+    contextWindowsDesc: 'Set the input context window (tokens) per model. Matched by substring; unset models use the built-in default.',
+    addContextWindow: 'Add window',
+    contextWindowPlaceholder: 'Tokens (e.g., 1000000)',
 
     // Key encryption
     security: 'Security',
@@ -613,6 +621,10 @@ export const translations = {
     priceInputLabel: '输入 $/1M',
     priceOutputLabel: '输出 $/1M',
     costUnknown: '未设置单价',
+    contextWindows: '上下文上限',
+    contextWindowsDesc: '设置每个模型的输入上下文上限(token 数)，按子串匹配。未设置的模型使用内置默认值。',
+    addContextWindow: '添加上限',
+    contextWindowPlaceholder: 'Token 数 (例如: 1000000)',
 
     // Key encryption
     security: '安全',

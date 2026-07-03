@@ -344,7 +344,7 @@ export const Sidebar: React.FC = () => {
       )}
 
       {/* Mobile overlay backdrop */}
-      <div onClick={store.toggleSidebar} className="md:hidden fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-40" />
+      <div onClick={store.toggleSidebar} className="md:hidden fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-40 touch-none overscroll-none" />
 
       <div className="fixed md:relative inset-y-0 left-0 w-72 max-w-[84vw] h-full md:h-auto md:rounded-[2rem] bg-sidebar-light dark:bg-sidebar-dark md:bg-sidebar-light/92 md:dark:bg-sidebar-dark/88 md:backdrop-blur-2xl border border-white/60 dark:border-white/8 md:shadow-[0_16px_40px_rgba(148,163,184,0.16)] md:dark:shadow-[0_20px_50px_rgba(0,0,0,0.35)] flex flex-col z-50 md:z-40 overflow-hidden">
 

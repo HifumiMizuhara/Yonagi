@@ -61,6 +61,8 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   const [newPriceModel, setNewPriceModel] = useState('');
   const [newPriceIn, setNewPriceIn] = useState('');
   const [newPriceOut, setNewPriceOut] = useState('');
+  const [newContextModel, setNewContextModel] = useState('');
+  const [newContextWindow, setNewContextWindow] = useState('');
 
   // Encryption form state
   const [encPass, setEncPass] = useState('');
@@ -102,6 +104,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
     setNewPriceModel('');
     setNewPriceIn('');
     setNewPriceOut('');
+  };
+
+  const handleAddContextWindow = async () => {
+    const window = parseInt(newContextWindow, 10);
+    if (!newContextModel.trim() || isNaN(window) || window <= 0) return;
+    await store.setContextWindowOverride(newContextModel.trim(), window);
+    setNewContextModel('');
+    setNewContextWindow('');
   };
 
   const handleEnableEncryption = async () => {
@@ -372,14 +382,14 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-md p-4 animate-fade-in touch-none overscroll-none">
       <div
         ref={dialogRef}
         role="dialog"
         aria-modal="true"
         aria-labelledby="settings-dialog-title"
         tabIndex={-1}
-        className="relative flex flex-col w-full max-w-4xl h-[90dvh] md:h-[650px] bg-card-light dark:bg-sidebar-dark md:bg-card-light/95 md:dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans md:backdrop-blur-2xl"
+        className="relative flex flex-col w-full max-w-4xl h-[90dvh] md:h-[650px] bg-card-light dark:bg-sidebar-dark md:bg-card-light/95 md:dark:bg-sidebar-dark/95 border border-border-light/80 dark:border-border-dark/80 rounded-3xl shadow-2xl shadow-black/30 overflow-hidden font-sans md:backdrop-blur-2xl touch-none"
       >
         
         {/* Header */}
@@ -494,7 +504,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                   </div>
 
                   {/* Scrollable list of providers */}
-                  <div className="flex-1 overflow-y-auto p-3 space-y-1">
+                  <div className="flex-1 overflow-y-auto touch-pan-y p-3 space-y-1">
                     {filteredProviders.map((p) => {
                       const isSelected = selectedProviderId === p.id;
                       const isCustom = p.id.startsWith('custom_');
@@ -605,7 +615,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                 </div>
 
                 {/* Connections Column 2: Provider detail Form (Width: 2/3) */}
-                <div className={`${mobileDetailView ? 'block' : 'hidden md:block'} flex-1 overflow-y-auto p-4 md:p-6 space-y-6 min-h-0 h-full`}>
+                <div className={`${mobileDetailView ? 'block' : 'hidden md:block'} flex-1 overflow-y-auto touch-pan-y p-4 md:p-6 space-y-6 min-h-0 h-full`}>
 
                   {/* Mobile-only back button to return to the provider list */}
                   <button
@@ -862,7 +872,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     )}
 
                     {/* Grouped list of models */}
-                    <div className="space-y-4 max-h-[170px] overflow-y-auto p-2 border border-border-light dark:border-border-dark rounded-xl bg-card-light/10 dark:bg-sidebar-dark/5 shadow-inner">
+                    <div className="space-y-4 max-h-[170px] overflow-y-auto touch-pan-y p-2 border border-border-light dark:border-border-dark rounded-xl bg-card-light/10 dark:bg-sidebar-dark/5 shadow-inner">
                       {activeProvider.models.length === 0 ? (
                         <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-6 font-semibold select-none">
                           {t.noModels}
@@ -915,7 +925,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
 
             {activeTab === 'prompt' && (
-              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto touch-pan-y">
                 <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest select-none font-heading">{t.systemPrompt}</h3>
                 <div className="space-y-3">
                   <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed select-none">
@@ -1009,7 +1019,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
 
             {activeTab === 'pricing' && (
-              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto touch-pan-y">
                 <div className="space-y-1.5 select-none">
                   <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.pricing}</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{t.pricingDesc}</p>
@@ -1074,11 +1084,67 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                     ))
                   )}
                 </div>
+
+                {/* Context window overrides */}
+                <div className="space-y-1.5 select-none pt-2">
+                  <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.contextWindows}</h3>
+                  <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{t.contextWindowsDesc}</p>
+                </div>
+
+                <div className="grid grid-cols-12 gap-2 bg-card-light/40 dark:bg-sidebar-dark/30 p-3 rounded-xl border border-border-light dark:border-border-dark items-center">
+                  <input
+                    type="text"
+                    aria-label={t.priceModelPlaceholder}
+                    value={newContextModel}
+                    onChange={(e) => setNewContextModel(e.target.value)}
+                    placeholder={t.priceModelPlaceholder}
+                    className="col-span-12 sm:col-span-7 px-3 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
+                  />
+                  <input
+                    type="number" step="1000"
+                    aria-label={t.contextWindowPlaceholder}
+                    value={newContextWindow}
+                    onChange={(e) => setNewContextWindow(e.target.value)}
+                    placeholder={t.contextWindowPlaceholder}
+                    className="col-span-10 sm:col-span-4 px-2 py-2 text-xs bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
+                  />
+                  <button
+                    onClick={handleAddContextWindow}
+                    aria-label={t.addContextWindow}
+                    className="col-span-2 sm:col-span-1 flex items-center justify-center p-2 bg-blue-600 hover:bg-blue-700 text-white rounded-lg cursor-pointer transition-colors"
+                  >
+                    <Plus className="w-4 h-4" />
+                  </button>
+                </div>
+
+                <div className="space-y-1.5">
+                  {Object.keys(store.contextWindowOverrides).length === 0 ? (
+                    <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-4 select-none">{t.noModels}</p>
+                  ) : (
+                    Object.entries(store.contextWindowOverrides).map(([modelId, window]) => (
+                      <div key={modelId} className="group flex items-center justify-between py-2 px-3 rounded-lg border border-border-light dark:border-border-dark bg-card-light/20 dark:bg-sidebar-dark/10">
+                        <span className="text-xs font-mono text-gray-800 dark:text-gray-200 truncate pr-3">{modelId}</span>
+                        <div className="flex items-center space-x-3 shrink-0">
+                          <span className="text-[11px] font-mono text-gray-500 dark:text-gray-400">
+                            {(window as number).toLocaleString()} <span className="text-gray-400">tok</span>
+                          </span>
+                          <button
+                            onClick={() => store.removeContextWindowOverride(modelId)}
+                            aria-label={`${t.delete}: ${modelId}`}
+                            className="p-1 text-gray-400 hover:text-red-500 hover:bg-red-500/10 rounded-md cursor-pointer transition-colors"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
+                    ))
+                  )}
+                </div>
               </div>
             )}
 
             {activeTab === 'security' && (
-              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-6 space-y-5 overflow-y-auto touch-pan-y">
                 <div className="space-y-1.5 select-none">
                   <h3 className="text-sm font-bold text-gray-900 dark:text-gray-50 uppercase tracking-widest font-heading">{t.security}</h3>
                   <p className="text-xs text-gray-500 dark:text-gray-400 leading-relaxed">{t.encryptKeysDesc}</p>
@@ -1134,7 +1200,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
             )}
 
             {activeTab === 'data' && (
-              <div className="flex-1 p-4 md:p-6 space-y-6 overflow-y-auto">
+              <div className="flex-1 p-4 md:p-6 space-y-6 overflow-y-auto touch-pan-y">
                 
                 {/* Theme Selection */}
                 <div className="space-y-3">
@@ -1236,7 +1302,7 @@ export const SettingsModal: React.FC<SettingsModalProps> = ({ onClose }) => {
                         {storageSummary.chats.length === 0 ? (
                           <p className="text-[11px] text-gray-400 dark:text-gray-500 text-center py-4 select-none">{t.storageNoChats}</p>
                         ) : (
-                          <div className="max-h-56 overflow-y-auto space-y-1.5 pr-0.5">
+                          <div className="max-h-56 overflow-y-auto touch-pan-y space-y-1.5 pr-0.5">
                             {storageSummary.chats.map((entry) => {
                               const share = formatPercent(entry.totalBytes, storageSummary.chatDataBytes);
                               const barWidth = storageSummary.chatDataBytes
