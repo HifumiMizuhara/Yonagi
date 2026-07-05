@@ -319,6 +319,88 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
   border-color: rgba(99, 102, 241, 0.2);
 }
 
+/* Theme-aware fenced code blocks and highlight.js tokens */
+.code-block {
+  color: #24292f;
+  background: #f6f8fa;
+  border: 1px solid rgba(71, 85, 105, 0.2);
+  box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
+}
+
+.code-block-header {
+  color: #57606a;
+  background: #eef1f4;
+  border-bottom: 1px solid rgba(71, 85, 105, 0.16);
+}
+
+.code-block-copy:hover { color: #0369a1; }
+.code-block .hljs { color: inherit; background: transparent; }
+.code-block .hljs-comment,
+.code-block .hljs-quote { color: #6e7781; font-style: italic; }
+.code-block .hljs-keyword,
+.code-block .hljs-selector-tag,
+.code-block .hljs-literal { color: #cf222e; }
+.code-block .hljs-string,
+.code-block .hljs-doctag,
+.code-block .hljs-regexp { color: #0a3069; }
+.code-block .hljs-title,
+.code-block .hljs-title.function_,
+.code-block .hljs-section { color: #8250df; }
+.code-block .hljs-number,
+.code-block .hljs-symbol,
+.code-block .hljs-variable,
+.code-block .hljs-template-variable { color: #0550ae; }
+.code-block .hljs-type,
+.code-block .hljs-built_in,
+.code-block .hljs-class .hljs-title { color: #953800; }
+.code-block .hljs-attr,
+.code-block .hljs-attribute,
+.code-block .hljs-selector-class,
+.code-block .hljs-selector-id { color: #116329; }
+.code-block .hljs-meta { color: #57606a; }
+.code-block .hljs-addition { color: #1a7f37; background: #dafbe1; }
+.code-block .hljs-deletion { color: #cf222e; background: #ffebe9; }
+
+.dark .code-block {
+  color: #e4e4e7;
+  background: #0f0f12;
+  border-color: rgba(63, 63, 70, 0.8);
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+}
+
+.dark .code-block-header {
+  color: #71717a;
+  background: #17171b;
+  border-bottom-color: rgba(63, 63, 70, 0.6);
+}
+
+.dark .code-block-copy:hover { color: #38bdf8; }
+.dark .code-block .hljs-comment,
+.dark .code-block .hljs-quote { color: #8b949e; }
+.dark .code-block .hljs-keyword,
+.dark .code-block .hljs-selector-tag,
+.dark .code-block .hljs-literal { color: #ff7b72; }
+.dark .code-block .hljs-string,
+.dark .code-block .hljs-doctag,
+.dark .code-block .hljs-regexp { color: #a5d6ff; }
+.dark .code-block .hljs-title,
+.dark .code-block .hljs-title.function_,
+.dark .code-block .hljs-section { color: #d2a8ff; }
+.dark .code-block .hljs-number,
+.dark .code-block .hljs-symbol,
+.dark .code-block .hljs-variable,
+.dark .code-block .hljs-template-variable { color: #79c0ff; }
+.dark .code-block .hljs-type,
+.dark .code-block .hljs-built_in,
+.dark .code-block .hljs-class .hljs-title { color: #ffa657; }
+.dark .code-block .hljs-attr,
+.dark .code-block .hljs-attribute,
+.dark .code-block .hljs-selector-class,
+.dark .code-block .hljs-selector-id { color: #7ee787; }
+.dark .code-block .hljs-meta { color: #8b949e; }
+.dark .code-block .hljs-addition { color: #aff5b4; background: rgba(46, 160, 67, 0.15); }
+.dark .code-block .hljs-deletion { color: #ffdcd7; background: rgba(248, 81, 73, 0.15); }
+
 .prose table {
   width: 100%;
   border-collapse: collapse;

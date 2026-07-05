@@ -22,6 +22,7 @@ import { SafeMarkdownLink } from '../utils/markdownComponents';
 import { sanitizeHref } from '../utils/safeUrl';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import hljs from 'highlight.js/lib/common';
 import {
   Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Pencil,
   ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe, Pin, EyeOff, Eye, PinOff, Sparkles,
@@ -1713,6 +1714,17 @@ const CodeBlock = ({
   copiedLabel: string;
 }) => {
   const [copied, setCopied] = useState(false);
+  const highlightedCode = useMemo(() => {
+    const language = lang.toLowerCase();
+
+    if (language && hljs.getLanguage(language)) {
+      return hljs.highlight(code, { language, ignoreIllegals: true }).value;
+    }
+
+    return language === 'text' || language === 'plaintext'
+      ? hljs.highlight(code, { language: 'plaintext' }).value
+      : hljs.highlightAuto(code).value;
+  }, [code, lang]);
 
   const handleCopy = async () => {
     try {
@@ -1725,19 +1737,20 @@ const CodeBlock = ({
   };
 
   return (
-    <div className="my-4 rounded-xl overflow-hidden border border-zinc-800/80 bg-[#0f0f12] text-left shadow-lg shadow-black/15 not-prose">
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[#17171b] border-b border-zinc-800/60 text-[11px] font-mono select-none">
-        <span className="font-bold uppercase tracking-wider text-zinc-500">{lang || 'text'}</span>
+    <div className="code-block my-4 rounded-xl overflow-hidden text-left not-prose">
+      <div className="code-block-header flex items-center justify-between px-4 py-2.5 text-[11px] font-mono select-none">
+        <span className="code-block-language font-bold uppercase tracking-wider">{lang || 'text'}</span>
         <button
           onClick={handleCopy}
-          className="flex items-center space-x-1.5 text-zinc-500 hover:text-sky-400 transition-colors cursor-pointer font-sans font-semibold"
+          className="code-block-copy flex items-center space-x-1.5 transition-colors cursor-pointer font-sans font-semibold"
+          aria-label={copied ? copiedLabel : copyLabel}
         >
-          {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+          {copied ? <Check className="w-3.5 h-3.5 text-emerald-500 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
           <span>{copied ? copiedLabel : copyLabel}</span>
         </button>
       </div>
-      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed font-mono text-[#d4d4d8]">
-        <code>{code}</code>
+      <pre className="p-4 overflow-x-auto text-[13px] leading-relaxed font-mono">
+        <code className="hljs" dangerouslySetInnerHTML={{ __html: highlightedCode }} />
       </pre>
     </div>
   );
