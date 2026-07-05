@@ -1401,7 +1401,61 @@ export const ChatArea: React.FC = () => {
                         {msg.error && (
                           <div className="mt-3 font-sans not-prose" role="alert">
                             <p className="text-xs text-red-600 dark:text-red-400">{msg.error}</p>
-                            {!isUser && <button type="button" onClick={() => store.regenerateResponse(index)} className="mt-2 min-h-11 px-3 rounded-xl border border-red-300/60 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer">{t.regenerate}</button>}
+                            {!isUser && (
+                              <div className="relative mt-2 flex flex-wrap gap-2">
+                                <button type="button" onClick={() => store.regenerateResponse(index)} disabled={isActiveChatGenerating} className="min-h-11 px-3 rounded-xl border border-red-300/60 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed">{t.regenerate}</button>
+                                <button
+                                  type="button"
+                                  onClick={() => {
+                                    setCompareSearchQuery('');
+                                    setCompareDropdownOpen(compareDropdownOpen === msg.id ? null : msg.id);
+                                  }}
+                                  disabled={isActiveChatGenerating}
+                                  aria-expanded={compareDropdownOpen === msg.id}
+                                  className="min-h-11 px-3 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold text-gray-600 dark:text-gray-300 hover:text-blue-600 dark:hover:text-sky-400 cursor-pointer disabled:opacity-40 disabled:cursor-not-allowed"
+                                >
+                                  {t.retryWithModel}
+                                </button>
+                                {compareDropdownOpen === msg.id && (
+                                  <div ref={dropdownCompareRef} className={`${compareDropdownPanelClass} p-1.5`}>
+                                    <div className="px-2.5 py-1.5 text-[8px] font-bold text-gray-400 uppercase tracking-wider border-b border-border-light/40 dark:border-border-dark/40 mb-1 select-none">
+                                      {t.retryModelSelect}
+                                    </div>
+                                    <div className="p-1 relative mb-1">
+                                      <input
+                                        type="text"
+                                        placeholder={t.searchModels}
+                                        value={compareSearchQuery}
+                                        onChange={(e) => setCompareSearchQuery(e.target.value)}
+                                        onClick={(e) => e.stopPropagation()}
+                                        className="w-full pl-7 pr-2 py-1.5 bg-bg-light dark:bg-bg-dark/80 text-[10px] border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 focus:ring-1 focus:ring-blue-500/10 text-gray-900 dark:text-gray-100 placeholder-gray-400"
+                                        autoFocus={!isTouchPrimaryDevice()}
+                                      />
+                                      <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-3 h-3 text-gray-400" />
+                                    </div>
+                                    {allModels
+                                      .filter((m) => m.name.toLowerCase().includes(compareSearchQuery.toLowerCase()))
+                                      .map((m) => (
+                                        <button
+                                          key={`${m.providerId}:${m.id}`}
+                                          onClick={() => {
+                                            void store.regenerateResponse(index, m.id, m.providerId);
+                                            setCompareDropdownOpen(null);
+                                          }}
+                                          className="w-full text-left px-2.5 py-1.5 rounded-md text-[10px] text-gray-700 dark:text-gray-300 hover:bg-blue-500/6 dark:hover:bg-blue-500/10 hover:text-blue-600 dark:hover:text-sky-400 transition-colors cursor-pointer truncate font-medium"
+                                          title={m.name}
+                                        >
+                                          <span className="flex min-w-0 items-center gap-1.5">
+                                            <ModelIcon providerId={m.providerId} providerName={m.group} modelId={m.id} className="w-4 h-4" />
+                                            <span className="truncate">{m.name}</span>
+                                            <span className="shrink-0 text-gray-400">({m.group})</span>
+                                          </span>
+                                        </button>
+                                      ))}
+                                  </div>
+                                )}
+                              </div>
+                            )}
                           </div>
                         )}
 
