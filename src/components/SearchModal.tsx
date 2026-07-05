@@ -8,14 +8,22 @@ interface SearchModalProps {
   onClose: () => void;
 }
 
+const SEARCH_SESSION_NOW = Date.now();
+
 export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
   const searchMessages = useChatStore((state) => state.searchMessages);
   const selectChat = useChatStore((state) => state.selectChat);
   const setScrollTargetMessageId = useChatStore((state) => state.setScrollTargetMessageId);
+  const chats = useChatStore((state) => state.chats);
+  const folders = useChatStore((state) => state.folders);
   const { t } = useTranslation();
   const [query, setQuery] = useState('');
   const [results, setResults] = useState<SearchResult[]>([]);
   const [loading, setLoading] = useState(false);
+  const [role, setRole] = useState('all');
+  const [folderId, setFolderId] = useState('all');
+  const [model, setModel] = useState('all');
+  const [period, setPeriod] = useState('all');
   const inputRef = useRef<HTMLInputElement>(null);
   const dialogRef = useRef<HTMLDivElement>(null);
   const requestIdRef = useRef(0);
@@ -26,7 +34,15 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
   }, []);
 
   // Debounced search — avoid synchronous setState in effect body
-  const displayResults = query.trim() ? results : [];
+  const modelOptions = Array.from(new Set(chats.map((chat) => chat.modelId))).sort();
+  const cutoff = period === 'day' ? SEARCH_SESSION_NOW - 86400000 : period === 'week' ? SEARCH_SESSION_NOW - 604800000 : 0;
+  const displayResults = query.trim() ? results.filter((result) => {
+    const chat = chats.find((item) => item.id === result.chatId);
+    return (role === 'all' || result.role === role)
+      && (folderId === 'all' || (folderId === 'none' ? !chat?.folderId : chat?.folderId === folderId))
+      && (model === 'all' || chat?.modelId === model)
+      && (!cutoff || result.timestamp >= cutoff);
+  }) : [];
 
   useEffect(() => {
     const requestId = ++requestIdRef.current;
@@ -108,6 +124,12 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
             <X className="w-4.5 h-4.5" />
           </button>
         </div>
+        <div className="flex gap-2 overflow-x-auto border-b border-border-light dark:border-border-dark px-4 py-2 no-scrollbar" aria-label="検索フィルター">
+          <Filter value={role} onChange={setRole} label="投稿者" options={[["all","すべて"],["user","ユーザー"],["assistant","AI"]]} />
+          <Filter value={period} onChange={setPeriod} label="期間" options={[["all","全期間"],["day","24時間"],["week","7日間"]]} />
+          <Filter value={folderId} onChange={setFolderId} label="プロジェクト" options={[["all","すべて"],["none","未分類"], ...folders.map((f) => [f.id, f.name])]} />
+          <Filter value={model} onChange={setModel} label="モデル" options={[["all","すべて"], ...modelOptions.map((m) => [m, m])]} />
+        </div>
 
         {/* Results */}
         <div className="flex-1 overflow-y-auto touch-pan-y p-2">
@@ -148,3 +170,10 @@ export const SearchModal: React.FC<SearchModalProps> = ({ onClose }) => {
     </div>
   );
 };
+
+const Filter: React.FC<{ value: string; onChange: (value: string) => void; label: string; options: string[][] }> = ({ value, onChange, label, options }) => <label className="shrink-0 text-[10px] font-semibold text-gray-400">
+  <span className="sr-only">{label}</span>
+  <select value={value} onChange={(e) => onChange(e.target.value)} aria-label={label} className="min-h-11 rounded-xl border border-border-light dark:border-border-dark bg-transparent px-3 text-xs text-gray-600 dark:text-gray-300 cursor-pointer">
+    {options.map(([optionValue, text]) => <option key={optionValue} value={optionValue}>{label}: {text}</option>)}
+  </select>
+</label>;

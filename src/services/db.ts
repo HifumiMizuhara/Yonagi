@@ -5,6 +5,10 @@ export interface Folder {
   name: string;
   color: string;
   order: number;
+  systemPrompt?: string;
+  providerId?: string;
+  modelId?: string;
+  knowledgeFiles?: Array<{ name: string; content: string; size: number }>;
 }
 
 export interface Chat {
@@ -19,6 +23,7 @@ export interface Chat {
   effort?: string;
   webSearch?: boolean;
   folderId?: string;
+  deletedAt?: number;
   // Context management
   memoryNote?: string; // persistent note injected into every request, independent of systemPrompt
   historyWindowLimit?: number; // max non-pinned messages sent as context; unset = unlimited
@@ -128,6 +133,12 @@ class YonagiDatabase extends Dexie {
     });
     this.version(3).stores({
       chats: 'id, title, providerId, modelId, createdAt, updatedAt, folderId',
+      messages: 'id, chatId, role, timestamp',
+      settings: 'key',
+      folders: 'id, name, order',
+    });
+    this.version(4).stores({
+      chats: 'id, title, providerId, modelId, createdAt, updatedAt, folderId, deletedAt',
       messages: 'id, chatId, role, timestamp',
       settings: 'key',
       folders: 'id, name, order',

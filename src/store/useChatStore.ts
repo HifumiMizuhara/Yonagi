@@ -103,6 +103,7 @@ const findProviderForModel = (
 export interface ChatState {
   // Data State
   chats: Chat[];
+  trashedChats: Chat[];
   messages: Message[];
   folders: Folder[];
   activeChatId: string | null;
@@ -156,6 +157,9 @@ export interface ChatState {
   selectChat: (chatId: string | null) => Promise<void>;
   createChat: (modelId?: string, providerId?: string) => Promise<string>;
   deleteChat: (chatId: string) => Promise<void>;
+  restoreChat: (chatId: string) => Promise<void>;
+  permanentlyDeleteChat: (chatId: string) => Promise<void>;
+  emptyTrash: () => Promise<void>;
   renameChat: (chatId: string, title: string) => Promise<void>;
   clearAllChats: () => Promise<void>;
   createBranch: (messageIndex: number) => Promise<void>;
@@ -163,6 +167,8 @@ export interface ChatState {
   // Messaging Actions
   sendMessage: (content: string, attachments?: Attachment[]) => Promise<void>;
   editUserMessage: (messageId: string, content: string) => Promise<void>;
+  deleteMessage: (messageId: string) => Promise<void>;
+  rewindToMessage: (messageId: string) => Promise<void>;
   regenerateResponse: (messageIndex: number, targetModelId?: string, targetProviderId?: string) => Promise<void>;
   switchMessageVariant: (messageId: string, variantIndex: number) => Promise<void>;
   stopGeneration: () => void;
@@ -450,7 +456,12 @@ export const useChatStore = create<ChatState>((set, get) => {
         summaryContent,
         summaryUpToMessageId,
       });
-      const systemSections = [systemPrompt];
+      const streamChat = await db.chats.get(chatId);
+      const streamProject = streamChat?.folderId ? await db.folders.get(streamChat.folderId) : undefined;
+      const projectKnowledge = streamProject?.knowledgeFiles?.length
+        ? `[Project knowledge]\n${streamProject.knowledgeFiles.map((file) => `## ${file.name}\n${file.content}`).join('\n\n')}`
+        : '';
+      const systemSections = [systemPrompt, streamProject?.systemPrompt ? `[Project instructions]\n${streamProject.systemPrompt}` : '', projectKnowledge];
       if (memoryNote) systemSections.push(`[Persistent memory note]\n${memoryNote}`);
       if (summaryContent) systemSections.push(`[Summary of earlier conversation]\n${summaryContent}`);
       const effectiveSystemPrompt = systemSections.filter(Boolean).join('\n\n');
@@ -577,6 +588,7 @@ export const useChatStore = create<ChatState>((set, get) => {
 
   return ({
   chats: [],
+  trashedChats: [],
   messages: [],
   folders: [],
   activeChatId: null,
@@ -727,6 +739,16 @@ export const useChatStore = create<ChatState>((set, get) => {
       // 2. Load chats list
       await get().loadChats();
       await get().loadFolders();
+      const expiredTrashIds = get().trashedChats
+        .filter((chat) => (chat.deletedAt || 0) < Date.now() - 30 * 24 * 60 * 60 * 1000)
+        .map((chat) => chat.id);
+      if (expiredTrashIds.length) {
+        await db.transaction('rw', [db.chats, db.messages], async () => {
+          await db.messages.where('chatId').anyOf(expiredTrashIds).delete();
+          await db.chats.bulkDelete(expiredTrashIds);
+        });
+        await get().loadChats();
+      }
     } catch (error) {
       reportHistoryLoadError(error);
       // Best-effort: still try to populate the chat list if possible.
@@ -988,7 +1010,10 @@ export const useChatStore = create<ChatState>((set, get) => {
 
   loadChats: async () => {
     const chatsList = await db.chats.orderBy('updatedAt').reverse().toArray();
-    set({ chats: chatsList });
+    set({
+      chats: chatsList.filter((chat) => !chat.deletedAt),
+      trashedChats: chatsList.filter((chat) => !!chat.deletedAt).sort((a, b) => (b.deletedAt || 0) - (a.deletedAt || 0)),
+    });
   },
 
   loadFolders: async () => {
@@ -1024,7 +1049,11 @@ export const useChatStore = create<ChatState>((set, get) => {
   },
 
   moveChatToFolder: async (chatId, folderId) => {
-    await db.chats.update(chatId, { folderId: folderId ?? undefined });
+    const folder = folderId ? await db.folders.get(folderId) : undefined;
+    await db.chats.update(chatId, {
+      folderId: folderId ?? undefined,
+      ...(folder?.modelId ? { modelId: folder.modelId, providerId: folder.providerId } : {}),
+    });
     await get().loadChats();
   },
 
@@ -1083,10 +1112,7 @@ export const useChatStore = create<ChatState>((set, get) => {
         return { activeGenerations: next };
       });
     }
-    await db.transaction('rw', [db.chats, db.messages], async () => {
-      await db.chats.delete(chatId);
-      await db.messages.where('chatId').equals(chatId).delete();
-    });
+    await db.chats.update(chatId, { deletedAt: Date.now() });
     
     await get().loadChats();
     
@@ -1098,6 +1124,29 @@ export const useChatStore = create<ChatState>((set, get) => {
         await get().selectChat(null);
       }
     }
+  },
+
+  restoreChat: async (chatId) => {
+    await db.chats.update(chatId, { deletedAt: undefined, updatedAt: Date.now() });
+    await get().loadChats();
+  },
+
+  permanentlyDeleteChat: async (chatId) => {
+    await db.transaction('rw', [db.chats, db.messages], async () => {
+      await db.messages.where('chatId').equals(chatId).delete();
+      await db.chats.delete(chatId);
+    });
+    await get().loadChats();
+  },
+
+  emptyTrash: async () => {
+    const ids = get().trashedChats.map((chat) => chat.id);
+    if (!ids.length) return;
+    await db.transaction('rw', [db.chats, db.messages], async () => {
+      await db.messages.where('chatId').anyOf(ids).delete();
+      await db.chats.bulkDelete(ids);
+    });
+    await get().loadChats();
   },
 
   renameChat: async (chatId, title) => {
@@ -1324,6 +1373,28 @@ export const useChatStore = create<ChatState>((set, get) => {
       summaryContent: activeChat?.summaryContent,
       summaryUpToMessageId: activeChat?.summaryUpToMessageId,
     });
+  },
+
+  deleteMessage: async (messageId) => {
+    const target = get().messages.find((message) => message.id === messageId);
+    if (!target || get().activeGenerations[target.chatId]) return;
+    await db.messages.delete(messageId);
+    const messages = get().messages.filter((message) => message.id !== messageId);
+    set({ messages });
+    await db.chats.update(target.chatId, { updatedAt: Date.now(), summaryContent: undefined, summaryUpToMessageId: undefined });
+    await get().loadChats();
+  },
+
+  rewindToMessage: async (messageId) => {
+    const messages = get().messages;
+    const index = messages.findIndex((message) => message.id === messageId);
+    const chatId = get().activeChatId;
+    if (index < 0 || !chatId || get().activeGenerations[chatId]) return;
+    const ids = messages.slice(index + 1).map((message) => message.id);
+    if (ids.length) await db.messages.bulkDelete(ids);
+    set({ messages: messages.slice(0, index + 1) });
+    await db.chats.update(chatId, { updatedAt: Date.now(), summaryContent: undefined, summaryUpToMessageId: undefined });
+    await get().loadChats();
   },
 
   regenerateResponse: async (messageIndex, targetModelId, targetProviderId) => {

@@ -1,4 +1,4 @@
-import React, { useEffect } from 'react';
+import React, { useEffect, useState } from 'react';
 import { Sidebar } from './components/Sidebar';
 import { ChatArea } from './components/ChatArea';
 import { SettingsModal } from './components/SettingsModal';
@@ -7,6 +7,9 @@ import { UnlockModal } from './components/UnlockModal';
 import { useChatStore } from './store/useChatStore';
 import { useTranslation } from './hooks/useTranslation';
 import { X } from 'lucide-react';
+import { CommandPalette } from './components/CommandPalette';
+import { OnboardingModal } from './components/OnboardingModal';
+import { db } from './services/db';
 
 const App: React.FC = () => {
   const { t } = useTranslation();
@@ -19,10 +22,22 @@ const App: React.FC = () => {
   const setSettingsOpen = useChatStore((state) => state.setSettingsOpen);
   const setSearchOpen = useChatStore((state) => state.setSearchOpen);
   const clearStorageNotice = useChatStore((state) => state.clearStorageNotice);
+  const [commandOpen, setCommandOpen] = useState(false);
+  const [onboardingOpen, setOnboardingOpen] = useState(false);
 
   useEffect(() => {
-    void init();
+    void init().then(async () => setOnboardingOpen((await db.settings.get('onboardingComplete'))?.value !== true));
   }, [init]);
+
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') { event.preventDefault(); setCommandOpen(true); }
+      if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'n') { event.preventDefault(); void useChatStore.getState().createChat(); }
+      if (event.key === 'Escape') setCommandOpen(false);
+    };
+    window.addEventListener('keydown', onKeyDown);
+    return () => window.removeEventListener('keydown', onKeyDown);
+  }, []);
 
   // iOS Safari doesn't shrink the layout viewport when the on-screen keyboard
   // opens, so `100dvh` stays taller than what's actually visible and the
@@ -80,6 +95,8 @@ const App: React.FC = () => {
 
       {/* API key unlock prompt on startup */}
       {keysLocked && unlockPromptOpen && <UnlockModal />}
+      {commandOpen && <CommandPalette onClose={() => setCommandOpen(false)} />}
+      {onboardingOpen && <OnboardingModal onDone={() => setOnboardingOpen(false)} />}
 
       {storageNotice && (
         <div className="fixed bottom-4 left-1/2 z-[90] w-[min(92vw,36rem)] -translate-x-1/2">

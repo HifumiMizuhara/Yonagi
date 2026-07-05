@@ -4,7 +4,7 @@ import { useTranslation } from '../hooks/useTranslation';
 import { useDialogAccessibility } from '../hooks/useDialogAccessibility';
 import { type Chat } from '../services/db';
 import {
-  MessageSquare, Plus, Settings, Trash2, Edit2, Check, X, PanelLeftClose, PanelLeft, MessageCircle, Search, FolderPlus, Folder, FolderOpen, ChevronRight, ChevronDown, MoreHorizontal
+  MessageSquare, Plus, Settings, Trash2, Edit2, Check, X, PanelLeftClose, PanelLeft, MessageCircle, Search, FolderPlus, Folder, FolderOpen, ChevronRight, ChevronDown, MoreHorizontal, RotateCcw, SlidersHorizontal
 } from 'lucide-react';
 
 export const Sidebar: React.FC = () => {
@@ -24,6 +24,11 @@ export const Sidebar: React.FC = () => {
   const [editFolderName, setEditFolderName] = useState('');
   const [pendingDeleteFolderId, setPendingDeleteFolderId] = useState<string | null>(null);
   const [folderMenuChatId, setFolderMenuChatId] = useState<string | null>(null);
+  const [showTrash, setShowTrash] = useState(false);
+  const [projectSettingsId, setProjectSettingsId] = useState<string | null>(null);
+  const [projectPrompt, setProjectPrompt] = useState('');
+  const [projectModel, setProjectModel] = useState('');
+  const [projectFiles, setProjectFiles] = useState<Array<{ name: string; content: string; size: number }>>([]);
   const deleteFolderDialogRef = useRef<HTMLDivElement>(null);
   useDialogAccessibility(deleteFolderDialogRef, () => setPendingDeleteFolderId(null), !!pendingDeleteFolderId);
 
@@ -343,6 +348,32 @@ export const Sidebar: React.FC = () => {
         </div>
       )}
 
+      {projectSettingsId && (() => {
+        const folder = store.folders.find((item) => item.id === projectSettingsId);
+        if (!folder) return null;
+        return <div className="fixed inset-0 z-[70] flex items-center justify-center bg-black/50 backdrop-blur-sm p-4">
+          <div role="dialog" aria-modal="true" aria-labelledby="project-settings-title" className="w-full max-w-lg rounded-2xl border border-border-light dark:border-border-dark bg-card-light dark:bg-sidebar-dark p-5 shadow-2xl">
+            <h2 id="project-settings-title" className="text-sm font-bold text-gray-900 dark:text-white">プロジェクト設定 — {folder.name}</h2>
+            <label className="block mt-4 text-xs font-semibold text-gray-600 dark:text-gray-300">共通指示
+              <textarea value={projectPrompt} onChange={(e) => setProjectPrompt(e.target.value)} rows={6} className="mt-2 w-full rounded-xl border border-border-light dark:border-border-dark bg-transparent p-3 text-sm" placeholder="このプロジェクト内の会話に共通する指示" />
+            </label>
+            <label className="block mt-3 text-xs font-semibold text-gray-600 dark:text-gray-300">既定モデル
+              <input value={projectModel} onChange={(e) => setProjectModel(e.target.value)} className="mt-2 w-full min-h-11 rounded-xl border border-border-light dark:border-border-dark bg-transparent px-3 text-sm" placeholder="空欄なら現在のモデル" />
+            </label>
+            <div className="mt-3">
+              <label className="inline-flex min-h-11 items-center rounded-xl border border-border-light dark:border-border-dark px-3 text-xs font-semibold cursor-pointer">共有資料を追加
+                <input type="file" multiple accept=".txt,.md,.csv,.json,.yaml,.yml,.xml,.js,.ts,.tsx,.py,.html,.css" className="hidden" onChange={async (e) => { const files = Array.from(e.target.files || []); const loaded = await Promise.all(files.map(async (file) => ({ name: file.name, content: await file.text(), size: file.size }))); setProjectFiles((current) => [...current, ...loaded]); e.target.value = ''; }} />
+              </label>
+              <div className="mt-2 flex flex-wrap gap-2">{projectFiles.map((file, index) => <span key={`${file.name}-${index}`} className="inline-flex items-center gap-1 rounded-lg bg-blue-500/8 px-2 py-1 text-[10px] text-blue-600">{file.name}<button type="button" onClick={() => setProjectFiles((items) => items.filter((_, itemIndex) => itemIndex !== index))} aria-label={`${file.name}を削除`} className="p-1 cursor-pointer"><X className="w-3 h-3" /></button></span>)}</div>
+            </div>
+            <div className="mt-5 flex justify-end gap-2">
+              <button type="button" onClick={() => setProjectSettingsId(null)} className="min-h-11 px-4 rounded-xl border border-border-light dark:border-border-dark text-xs font-semibold cursor-pointer">{t.cancel}</button>
+              <button type="button" onClick={async () => { await (await import('../services/db')).db.folders.update(folder.id, { systemPrompt: projectPrompt || undefined, modelId: projectModel || undefined, knowledgeFiles: projectFiles }); await store.loadFolders(); setProjectSettingsId(null); }} className="min-h-11 px-4 rounded-xl bg-blue-600 text-white text-xs font-semibold cursor-pointer">{t.save}</button>
+            </div>
+          </div>
+        </div>;
+      })()}
+
       {/* Mobile overlay backdrop */}
       <div onClick={store.toggleSidebar} className="md:hidden fixed inset-0 bg-slate-950/20 backdrop-blur-sm z-40 touch-none overscroll-none" />
 
@@ -397,6 +428,23 @@ export const Sidebar: React.FC = () => {
 
         {/* Scrollable chat list */}
         <div className="flex-1 overflow-y-auto overflow-x-hidden px-3 md:px-2.5 pt-3 pb-3 space-y-3">
+          <button type="button" onClick={() => setShowTrash(!showTrash)} aria-expanded={showTrash} className="w-full min-h-11 flex items-center gap-2 px-3 rounded-xl text-xs font-semibold text-gray-500 hover:bg-white/70 dark:hover:bg-white/5 cursor-pointer">
+            <Trash2 className="w-3.5 h-3.5" />
+            <span className="flex-1 text-left">ゴミ箱</span>
+            <span className="text-[10px] text-gray-400">{store.trashedChats.length}</span>
+          </button>
+          {showTrash && (
+            <div className="space-y-1 rounded-2xl border border-border-light dark:border-border-dark p-2">
+              {store.trashedChats.length === 0 ? <p className="px-2 py-3 text-xs text-gray-400">ゴミ箱は空です</p> : store.trashedChats.map((chat) => (
+                <div key={chat.id} className="flex items-center gap-1 rounded-xl px-2 min-h-11 hover:bg-white/70 dark:hover:bg-white/5">
+                  <span className="flex-1 truncate text-xs text-gray-600 dark:text-gray-300">{chat.title}</span>
+                  <button type="button" onClick={() => store.restoreChat(chat.id)} aria-label="復元" title="復元" className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 hover:text-blue-600 cursor-pointer"><RotateCcw className="w-3.5 h-3.5" /></button>
+                  <button type="button" onClick={() => { if (window.confirm('この会話を完全に削除しますか？この操作は取り消せません。')) void store.permanentlyDeleteChat(chat.id); }} aria-label="完全に削除" title="完全に削除" className="min-w-11 min-h-11 flex items-center justify-center text-gray-400 hover:text-red-500 cursor-pointer"><Trash2 className="w-3.5 h-3.5" /></button>
+                </div>
+              ))}
+              {store.trashedChats.length > 0 && <button type="button" onClick={() => { if (window.confirm('ゴミ箱の会話をすべて完全に削除しますか？')) void store.emptyTrash(); }} className="w-full min-h-11 rounded-xl text-xs font-semibold text-red-500 hover:bg-red-500/10 cursor-pointer">ゴミ箱を空にする</button>}
+            </div>
+          )}
           {/* Folder creation input */}
           {creatingFolder && (
             <div className="flex items-center gap-1 px-2 py-1">
@@ -474,6 +522,13 @@ export const Sidebar: React.FC = () => {
                             <span className="text-[9px] text-gray-400 dark:text-gray-600 ml-1">{folderChats.length}</span>
                           </button>
                           <div className="hover-action flex space-x-0.5 transition-opacity duration-150">
+                            <button
+                              onClick={() => { setProjectSettingsId(folder.id); setProjectPrompt(folder.systemPrompt || ''); setProjectModel(folder.modelId || ''); setProjectFiles(folder.knowledgeFiles || []); }}
+                              aria-label="プロジェクト設定"
+                              className="min-w-9 h-full md:h-9 flex items-center justify-center text-gray-400 hover:text-blue-600 rounded-md cursor-pointer"
+                            >
+                              <SlidersHorizontal className="w-3 h-3" />
+                            </button>
                             <button
                               onClick={() => { setEditingFolderId(folder.id); setEditFolderName(folder.name); }}
                               aria-label={t.renameFolder}

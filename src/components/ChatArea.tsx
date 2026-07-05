@@ -20,13 +20,14 @@ import { DEFAULT_CONTEXT_WINDOWS, resolveContextWindow } from '../utils/contextW
 import { isTouchPrimaryDevice } from '../utils/device';
 import { SafeMarkdownLink } from '../utils/markdownComponents';
 import { sanitizeHref } from '../utils/safeUrl';
+import { chatToMarkdown, downloadText, printChat } from '../utils/chatExport';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 import hljs from 'highlight.js/lib/common';
 import {
   Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Pencil,
   ChevronLeft, ChevronRight, Columns, Scale, GitFork, Globe, Pin, EyeOff, Eye, PinOff, Sparkles,
-  SlidersHorizontal
+  SlidersHorizontal, Download, Printer, Trash2, StepBack
 } from 'lucide-react';
 import { ModelIcon } from './ModelIcon';
 
@@ -144,6 +145,7 @@ export const ChatArea: React.FC = () => {
   const [compareSearchQuery, setCompareSearchQuery] = useState('');
   const [customEffortVisible, setCustomEffortVisible] = useState(false);
   const [customEffortValue, setCustomEffortValue] = useState('');
+  const draftLoadedForRef = useRef<string | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
   const dropdownRef = useRef<HTMLDivElement>(null);
@@ -307,6 +309,27 @@ export const ChatArea: React.FC = () => {
     () => store.chats.find((c) => c.id === store.activeChatId) || null,
     [store.chats, store.activeChatId]
   );
+
+  useEffect(() => {
+    const key = store.activeChatId ? `draft:${store.activeChatId}` : 'draft:new';
+    draftLoadedForRef.current = null;
+    void db.settings.get(key).then((record) => {
+      const draft = record?.value as { text?: string; attachments?: Attachment[] } | undefined;
+      setInputText(draft?.text || '');
+      setAttachments(draft?.attachments || []);
+      draftLoadedForRef.current = key;
+    });
+  }, [store.activeChatId]);
+
+  useEffect(() => {
+    const key = store.activeChatId ? `draft:${store.activeChatId}` : 'draft:new';
+    if (draftLoadedForRef.current !== key) return;
+    const timer = window.setTimeout(() => {
+      if (!inputText && attachments.length === 0) void db.settings.delete(key);
+      else void db.settings.put({ key, value: { text: inputText, attachments } });
+    }, 250);
+    return () => window.clearTimeout(timer);
+  }, [store.activeChatId, inputText, attachments]);
 
   const contextWindow = useMemo(
     () => resolveContextWindow(activeModel.id, { ...DEFAULT_CONTEXT_WINDOWS, ...store.contextWindowOverrides }),
@@ -666,8 +689,10 @@ export const ChatArea: React.FC = () => {
 
     const content = inputText;
     const currentAttachments = [...attachments];
+    const draftKey = store.activeChatId ? `draft:${store.activeChatId}` : 'draft:new';
     setInputText('');
     setAttachments([]);
+    void db.settings.delete(draftKey);
     isAtBottomRef.current = true;
     await store.sendMessage(content, currentAttachments);
   };
@@ -1064,6 +1089,17 @@ export const ChatArea: React.FC = () => {
           </button>
         )}
 
+        {activeChat && (
+          <div className="flex items-center gap-1">
+            <button type="button" onClick={() => downloadText(activeChat.title, chatToMarkdown(activeChat, store.messages))} aria-label="Markdown export" title="Markdown export" className="gemini-chip min-w-11 min-h-11 flex items-center justify-center rounded-full text-gray-400 hover:text-blue-600 cursor-pointer">
+              <Download className="w-4 h-4" />
+            </button>
+            <button type="button" onClick={() => printChat(activeChat, store.messages)} aria-label="Print / PDF" title="Print / PDF" className="gemini-chip min-w-11 min-h-11 flex items-center justify-center rounded-full text-gray-400 hover:text-blue-600 cursor-pointer">
+              <Printer className="w-4 h-4" />
+            </button>
+          </div>
+        )}
+
         {/* Status indicator */}
         <div aria-live="polite" className={`gemini-chip flex items-center space-x-1.5 text-[10px] font-semibold px-3 py-1.5 rounded-full hidden sm:flex transition-all ${
           isActiveChatGenerating
@@ -1363,7 +1399,10 @@ export const ChatArea: React.FC = () => {
                         )}
 
                         {msg.error && (
-                          <p className="mt-3 text-xs text-red-600 dark:text-red-400 font-sans not-prose" role="alert">{msg.error}</p>
+                          <div className="mt-3 font-sans not-prose" role="alert">
+                            <p className="text-xs text-red-600 dark:text-red-400">{msg.error}</p>
+                            {!isUser && <button type="button" onClick={() => store.regenerateResponse(index)} className="mt-2 min-h-11 px-3 rounded-xl border border-red-300/60 text-xs font-semibold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 cursor-pointer">{t.regenerate}</button>}
+                          </div>
                         )}
 
                         {!isUser && msg.citations && msg.citations.length > 0 && (
@@ -1396,6 +1435,8 @@ export const ChatArea: React.FC = () => {
                           onClick={() => navigator.clipboard.writeText(msg.content)}
                         />
                         <ContextToggleButtons msg={msg} store={store} t={t} />
+                        <button type="button" onClick={() => setConfirmDialog({ message: 'このメッセージだけを削除しますか？', confirmLabel: t.delete, onConfirm: () => store.deleteMessage(msg.id) })} aria-label={t.delete} title={t.delete} className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg cursor-pointer"><Trash2 className="w-3 h-3" /></button>
+                        {index < store.messages.length - 1 && <button type="button" onClick={() => setConfirmDialog({ message: 'この時点より後の会話を削除しますか？', confirmLabel: '巻き戻す', onConfirm: () => store.rewindToMessage(msg.id) })} aria-label="巻き戻す" title="ここまで巻き戻す" className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-amber-500 rounded-lg cursor-pointer"><StepBack className="w-3 h-3" /></button>}
                       </div>
                     )}
 
@@ -1490,6 +1531,8 @@ export const ChatArea: React.FC = () => {
                           <span className="whitespace-nowrap">{t.branchCreate}</span>
                         </button>
                         <ContextToggleButtons msg={msg} store={store} t={t} />
+                        <button type="button" onClick={() => setConfirmDialog({ message: 'このメッセージだけを削除しますか？', confirmLabel: t.delete, onConfirm: () => store.deleteMessage(msg.id) })} aria-label={t.delete} title={t.delete} className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-red-500 rounded-lg cursor-pointer"><Trash2 className="w-3 h-3" /></button>
+                        {index < store.messages.length - 1 && <button type="button" onClick={() => setConfirmDialog({ message: 'この時点より後の会話を削除しますか？', confirmLabel: '巻き戻す', onConfirm: () => store.rewindToMessage(msg.id) })} aria-label="巻き戻す" title="ここまで巻き戻す" className="min-w-9 min-h-9 flex items-center justify-center text-gray-400 hover:text-amber-500 rounded-lg cursor-pointer"><StepBack className="w-3 h-3" /></button>}
                       </div>
                     )}
                   </div>
