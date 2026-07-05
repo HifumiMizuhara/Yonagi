@@ -327,6 +327,24 @@ h1, h2, h3, h4, h5, h6, button, .font-heading {
   box-shadow: 0 8px 24px rgba(15, 23, 42, 0.07);
 }
 
+/* Keep inline-code prose styles out of fenced blocks. `not-prose` only has
+   meaning when Tailwind Typography is installed, so reset them explicitly. */
+.prose .code-block pre {
+  margin: 0;
+  max-width: 100%;
+}
+
+.prose .code-block code {
+  display: block;
+  padding: 0;
+  border: 0;
+  border-radius: 0;
+  background: transparent;
+  color: inherit;
+  font-size: inherit;
+  font-weight: 400;
+}
+
 .code-block-header {
   color: #57606a;
   background: #eef1f4;
