@@ -71,6 +71,8 @@ const App: React.FC = () => {
   return (
     <div className="app-shell flex h-dvh w-screen overflow-hidden text-gray-800 dark:text-gray-100 font-sans antialiased" style={{ height: 'var(--app-height, 100dvh)' }}>
 
+      <a href="#main-content" className="skip-link">{t.skipToContent}</a>
+
       <div className="pointer-events-none absolute inset-0">
         <div className="absolute left-1/2 top-0 h-[28rem] w-[28rem] -translate-x-1/2 rounded-full bg-sky-200/35 blur-3xl dark:bg-sky-500/10" />
       </div>
@@ -80,7 +82,9 @@ const App: React.FC = () => {
         <Sidebar />
 
         {/* Main chat window */}
-        <ChatArea />
+        <main id="main-content" className="flex min-w-0 flex-1" tabIndex={-1}>
+          <ChatArea />
+        </main>
       </div>
 
       {/* Settings Modal Overlay */}
