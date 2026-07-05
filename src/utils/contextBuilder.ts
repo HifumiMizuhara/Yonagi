@@ -1,11 +1,6 @@
 import type { Message } from '../services/db.ts';
 import { estimateTokens } from './tokens.ts';
 
-/** Prefix marking the id of a synthetic summary message injected in place of older history. */
-export const SUMMARY_MESSAGE_PREFIX = 'summary:';
-
-const isSummaryPlaceholder = (id: string) => id.startsWith(SUMMARY_MESSAGE_PREFIX);
-
 export interface ContextBuildOptions {
   memoryNote?: string;
   historyWindowLimit?: number;
@@ -27,21 +22,18 @@ export function buildContextMessages(messages: Message[], options: ContextBuildO
       const before = working.slice(0, idx + 1);
       const after = working.slice(idx + 1);
       const pinnedBefore = before.filter((m) => m.pinnedInContext);
-      const summaryMessage: Message = {
-        id: `${SUMMARY_MESSAGE_PREFIX}${options.summaryUpToMessageId}`,
-        chatId: working[0]?.chatId ?? '',
-        role: 'system',
-        content: `[Summary of earlier conversation]\n${options.summaryContent}`,
-        timestamp: 0,
-      };
-      working = [summaryMessage, ...pinnedBefore, ...after];
+      // The summary is added to the provider-level system prompt by the caller.
+      // Keeping it out of the message array avoids invalid system roles for Gemini,
+      // Claude filtering it out, and OpenAI-compatible providers suppressing the
+      // actual system prompt when they see this synthetic message.
+      working = [...pinnedBefore, ...after];
     }
   }
 
   const limit = options.historyWindowLimit;
   if (limit && limit > 0) {
     const protectedIds = new Set(
-      working.filter((m) => m.pinnedInContext || isSummaryPlaceholder(m.id)).map((m) => m.id)
+      working.filter((m) => m.pinnedInContext).map((m) => m.id)
     );
     const rest = working.filter((m) => !protectedIds.has(m.id));
     const keptRestIds = new Set(rest.slice(-limit).map((m) => m.id));
@@ -63,9 +55,10 @@ export function estimateContextUsage(
   systemPrompt: string,
   memoryNote: string | undefined,
   contextWindow: number,
-  getContent: (message: Message) => string
+  getContent: (message: Message) => string,
+  summaryContent?: string
 ): ContextUsage {
-  const text = systemPrompt + (memoryNote || '') + messages.map(getContent).join('\n');
+  const text = systemPrompt + (memoryNote || '') + (summaryContent || '') + messages.map(getContent).join('\n');
   const estimatedTokens = estimateTokens(text);
   return {
     estimatedTokens,
@@ -80,7 +73,7 @@ export function estimateContextUsage(
  * the most recent `keepRecent` messages, which stay verbatim.
  */
 export function messagesEligibleForSummary(messages: Message[], keepRecent: number): Message[] {
-  const candidates = messages.filter((m) => !m.excludedFromContext && !m.pinnedInContext && !isSummaryPlaceholder(m.id));
+  const candidates = messages.filter((m) => !m.excludedFromContext && !m.pinnedInContext);
   if (candidates.length <= keepRecent) return [];
   return candidates.slice(0, candidates.length - keepRecent);
 }

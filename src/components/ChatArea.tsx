@@ -16,7 +16,7 @@ import {
 import { estimateTokens, formatCost, DEFAULT_MODEL_PRICING, selectUsageCost } from '../utils/tokens';
 import { claudeSupportsXHigh } from '../utils/providerCompatibility';
 import { buildContextMessages, estimateContextUsage } from '../utils/contextBuilder';
-import { resolveContextWindow } from '../utils/contextWindows';
+import { DEFAULT_CONTEXT_WINDOWS, resolveContextWindow } from '../utils/contextWindows';
 import { isTouchPrimaryDevice } from '../utils/device';
 import { SafeMarkdownLink } from '../utils/markdownComponents';
 import { sanitizeHref } from '../utils/safeUrl';
@@ -309,7 +309,7 @@ export const ChatArea: React.FC = () => {
   );
 
   const contextWindow = useMemo(
-    () => resolveContextWindow(activeModel.id, store.contextWindowOverrides),
+    () => resolveContextWindow(activeModel.id, { ...DEFAULT_CONTEXT_WINDOWS, ...store.contextWindowOverrides }),
     [activeModel.id, store.contextWindowOverrides]
   );
 
@@ -325,7 +325,8 @@ export const ChatArea: React.FC = () => {
       activeChat?.systemPrompt || store.globalSystemPrompt,
       activeChat?.memoryNote,
       contextWindow,
-      (m) => m.content
+      (m) => m.content,
+      activeChat?.summaryContent
     );
   }, [store.messages, activeChat, store.defaultHistoryWindowLimit, store.globalSystemPrompt, contextWindow]);
 

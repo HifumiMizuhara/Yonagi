@@ -450,9 +450,10 @@ export const useChatStore = create<ChatState>((set, get) => {
         summaryContent,
         summaryUpToMessageId,
       });
-      const effectiveSystemPrompt = memoryNote
-        ? `${systemPrompt}\n\n[Persistent memory note]\n${memoryNote}`
-        : systemPrompt;
+      const systemSections = [systemPrompt];
+      if (memoryNote) systemSections.push(`[Persistent memory note]\n${memoryNote}`);
+      if (summaryContent) systemSections.push(`[Summary of earlier conversation]\n${summaryContent}`);
+      const effectiveSystemPrompt = systemSections.filter(Boolean).join('\n\n');
 
       await streamChatCompletion(
         {
@@ -1631,7 +1632,23 @@ export const useChatStore = create<ChatState>((set, get) => {
     if (!target) return;
     const updated: Message = { ...target, excludedFromContext: !target.excludedFromContext };
     await db.messages.put(updated);
-    set({ messages: messages.map((m) => (m.id === messageId ? updated : m)) });
+
+    const chat = await db.chats.get(target.chatId);
+    if (chat?.summaryUpToMessageId) {
+      const chronological = await db.messages.where('chatId').equals(target.chatId).sortBy('timestamp');
+      const targetIndex = chronological.findIndex((m) => m.id === messageId);
+      const boundaryIndex = chronological.findIndex((m) => m.id === chat.summaryUpToMessageId);
+      if (boundaryIndex === -1 || (targetIndex !== -1 && targetIndex <= boundaryIndex)) {
+        await db.chats.update(target.chatId, { summaryContent: undefined, summaryUpToMessageId: undefined });
+        set((state) => ({
+          chats: state.chats.map((c) => c.id === target.chatId
+            ? { ...c, summaryContent: undefined, summaryUpToMessageId: undefined }
+            : c),
+        }));
+      }
+    }
+
+    set((state) => ({ messages: state.messages.map((m) => (m.id === messageId ? updated : m)) }));
   },
 
   toggleMessagePinned: async (messageId) => {
