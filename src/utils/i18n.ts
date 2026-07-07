@@ -148,6 +148,7 @@ export const translations = {
     // Prompt presets
     prompts: 'プロンプト',
     promptPresets: 'プロンプトテンプレート',
+    exportLabel: 'エクスポート',
     savePreset: 'テンプレートとして保存',
     presetName: 'テンプレート名',
     presetContentPlaceholder: 'プロンプト内容...',
@@ -386,6 +387,7 @@ export const translations = {
     // Prompt presets
     prompts: 'Prompts',
     promptPresets: 'Prompt Templates',
+    exportLabel: 'Export',
     savePreset: 'Save as template',
     presetName: 'Template name',
     presetContentPlaceholder: 'Prompt content...',
@@ -624,6 +626,7 @@ export const translations = {
     // Prompt presets
     prompts: '提示词',
     promptPresets: '提示词模板',
+    exportLabel: '导出',
     savePreset: '保存为模板',
     presetName: '模板名称',
     presetContentPlaceholder: '提示词内容...',
