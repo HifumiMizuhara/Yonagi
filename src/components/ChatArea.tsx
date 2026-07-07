@@ -23,6 +23,9 @@ import { sanitizeHref } from '../utils/safeUrl';
 import { chatToMarkdown, downloadText, printChat } from '../utils/chatExport';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import remarkMath from 'remark-math';
+import rehypeKatex from 'rehype-katex';
+import 'katex/dist/katex.min.css';
 import hljs from 'highlight.js/lib/common';
 import {
   Paperclip, Send, Square, Copy, RotateCcw, FileText, X, ChevronDown, Check, User, Search, Pencil,
@@ -1260,12 +1263,12 @@ export const ChatArea: React.FC = () => {
                                     </button>
                                     {(thinkingOpen[`${msg.id}-${vIdx}`] !== undefined ? thinkingOpen[`${msg.id}-${vIdx}`] : true) && (
                                       <div className="mt-2 p-3 bg-zinc-50/80 dark:bg-zinc-900/50 text-gray-500 dark:text-gray-400 border border-border-light/40 dark:border-border-dark/40 rounded-xl max-h-40 overflow-y-auto leading-relaxed text-[11px] select-text prose dark:prose-invert prose-sm max-w-none">
-                                        <ReactMarkdown remarkPlugins={[remarkGfm]}>{v.thinking}</ReactMarkdown>
+                                        <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{v.thinking}</ReactMarkdown>
                                       </div>
                                     )}
                                   </div>
                                 )}
-                                <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>
                                   {v.content || '...'}
                                 </ReactMarkdown>
                                 {v.error && (
@@ -1323,7 +1326,7 @@ export const ChatArea: React.FC = () => {
                             </button>
                             {(thinkingOpen[msg.id] !== undefined ? thinkingOpen[msg.id] : true) && (
                               <div className="mt-2 p-3.5 bg-zinc-50/90 dark:bg-zinc-900/50 text-gray-500 dark:text-gray-400 border border-border-light/40 dark:border-border-dark/40 rounded-xl max-h-60 overflow-y-auto leading-relaxed text-[11.5px] select-text prose dark:prose-invert prose-sm max-w-none">
-                                <ReactMarkdown remarkPlugins={[remarkGfm]}>{msg.thinking}</ReactMarkdown>
+                                <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]}>{msg.thinking}</ReactMarkdown>
                               </div>
                             )}
                           </div>
@@ -1393,7 +1396,7 @@ export const ChatArea: React.FC = () => {
                             <p className="whitespace-pre-wrap">{msg.content}</p>
                           )
                         ) : (
-                          <ReactMarkdown remarkPlugins={[remarkGfm]} components={markdownComponents}>
+                          <ReactMarkdown remarkPlugins={[remarkGfm, remarkMath]} rehypePlugins={[rehypeKatex]} components={markdownComponents}>
                             {msg.content || '...'}
                           </ReactMarkdown>
                         )}

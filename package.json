@@ -15,12 +15,15 @@
     "dexie": "^4.4.4",
     "dexie-react-hooks": "^4.4.0",
     "highlight.js": "^11.11.1",
+    "katex": "^0.17.0",
     "lucide-react": "^1.21.0",
     "pdfjs-dist": "^6.0.227",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "react-markdown": "^10.1.0",
+    "rehype-katex": "^7.0.1",
     "remark-gfm": "^4.0.1",
+    "remark-math": "^6.0.0",
     "zustand": "^5.0.14"
   },
   "devDependencies": {
