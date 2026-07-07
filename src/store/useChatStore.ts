@@ -198,7 +198,7 @@ export interface ChatState {
   toggleMessagePinned: (messageId: string) => Promise<void>;
   updateChatMemoryNote: (chatId: string, memoryNote: string) => Promise<void>;
   updateChatHistoryWindowLimit: (chatId: string, limit: number | null) => Promise<void>;
-  summarizeChat: (chatId: string, keepRecent?: number) => Promise<void>;
+  summarizeChat: (chatId: string, keepRecent?: number, providerId?: string, modelId?: string) => Promise<void>;
   clearChatSummary: (chatId: string) => Promise<void>;
 
   // Folders
@@ -1530,6 +1530,41 @@ export const useChatStore = create<ChatState>((set, get) => {
 
     // 1. Create a new chat
     const newChatId = crypto.randomUUID();
+
+    // 2. Copy messages up to the selected index, tracking each original id's
+    // freshly-generated replacement so the summary boundary can be remapped below.
+    const messagesToCopy = get().messages.slice(0, messageIndex + 1);
+    const idMap = new Map<string, string>();
+    const copiedMessages: Message[] = messagesToCopy.map((m) => {
+      const newId = crypto.randomUUID();
+      idMap.set(m.id, newId);
+      return {
+        id: newId,
+        chatId: newChatId,
+        role: m.role,
+        content: m.content,
+        attachments: m.attachments ? [...m.attachments] : undefined,
+        modelProviderId: m.modelProviderId,
+        modelUsed: m.modelUsed,
+        timestamp: m.timestamp,
+        variants: m.variants ? m.variants.map((variant) => ({ ...variant })) : undefined,
+        activeVariantIndex: m.activeVariantIndex,
+        thinking: m.thinking,
+        citations: m.citations ? [...m.citations] : undefined,
+        usage: m.usage ? { ...m.usage } : undefined,
+        excludedFromContext: m.excludedFromContext,
+        pinnedInContext: m.pinnedInContext,
+      };
+    });
+
+    // The summary text itself is plain and portable; only its message-id boundary
+    // marker needs remapping. If the branch point is before the boundary, the
+    // summarized messages aren't all present in the copy, so drop it instead.
+    const remappedBoundaryId = activeChat.summaryUpToMessageId
+      ? idMap.get(activeChat.summaryUpToMessageId)
+      : undefined;
+    const carriesSummary = !!activeChat.summaryContent && !!remappedBoundaryId;
+
     const branchChat: Chat = {
       id: newChatId,
       title: `${activeChat.title} (Branch)`,
@@ -1541,33 +1576,13 @@ export const useChatStore = create<ChatState>((set, get) => {
       webSearch: activeChat.webSearch,
       memoryNote: activeChat.memoryNote,
       historyWindowLimit: activeChat.historyWindowLimit,
-      // Summary is intentionally not copied: it references message ids from the
-      // original chat, and the branch gets freshly-generated ids for its copies.
+      summaryContent: carriesSummary ? activeChat.summaryContent : undefined,
+      summaryUpToMessageId: carriesSummary ? remappedBoundaryId : undefined,
       createdAt: Date.now(),
       updatedAt: Date.now(),
     };
 
     await db.chats.add(branchChat);
-
-    // 2. Copy messages up to the selected index
-    const messagesToCopy = get().messages.slice(0, messageIndex + 1);
-    const copiedMessages: Message[] = messagesToCopy.map((m) => ({
-      id: crypto.randomUUID(),
-      chatId: newChatId,
-      role: m.role,
-      content: m.content,
-      attachments: m.attachments ? [...m.attachments] : undefined,
-      modelProviderId: m.modelProviderId,
-      modelUsed: m.modelUsed,
-      timestamp: m.timestamp,
-      variants: m.variants ? m.variants.map((variant) => ({ ...variant })) : undefined,
-      activeVariantIndex: m.activeVariantIndex,
-      thinking: m.thinking,
-      citations: m.citations ? [...m.citations] : undefined,
-      usage: m.usage ? { ...m.usage } : undefined,
-      excludedFromContext: m.excludedFromContext,
-      pinnedInContext: m.pinnedInContext,
-    }));
 
     if (copiedMessages.length > 0) {
       await db.messages.bulkAdd(copiedMessages);
@@ -1746,7 +1761,7 @@ export const useChatStore = create<ChatState>((set, get) => {
     }));
   },
 
-  summarizeChat: async (chatId, keepRecent = 6) => {
+  summarizeChat: async (chatId, keepRecent = 6, overrideProviderId, overrideModelId) => {
     if (get().summarizingChatId || get().activeGenerations[chatId]) return;
     set({ summarizingChatId: chatId });
     try {
@@ -1755,8 +1770,8 @@ export const useChatStore = create<ChatState>((set, get) => {
       if (eligible.length === 0) return;
 
       const chat = await db.chats.get(chatId);
-      const modelId = chat?.modelId || get().activeModelId;
-      const providerId = chat?.providerId || findProviderForModel(get().providers, modelId, get().activeProviderId)?.id || get().activeProviderId;
+      const modelId = overrideModelId || chat?.modelId || get().activeModelId;
+      const providerId = overrideProviderId || chat?.providerId || findProviderForModel(get().providers, modelId, get().activeProviderId)?.id || get().activeProviderId;
       const providerConfig = findProviderForModel(get().providers, modelId, providerId) || get().providers.custom;
 
       const transcript = eligible

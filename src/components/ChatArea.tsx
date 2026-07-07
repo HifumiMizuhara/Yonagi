@@ -146,6 +146,8 @@ export const ChatArea: React.FC = () => {
 
   const [modelSearchQuery, setModelSearchQuery] = useState('');
   const [compareSearchQuery, setCompareSearchQuery] = useState('');
+  const [summaryModelChoice, setSummaryModelChoice] = useState('');
+  const [summaryTextOpen, setSummaryTextOpen] = useState(false);
   const [customEffortVisible, setCustomEffortVisible] = useState(false);
   const [customEffortValue, setCustomEffortValue] = useState('');
   const draftLoadedForRef = useRef<string | null>(null);
@@ -312,6 +314,11 @@ export const ChatArea: React.FC = () => {
     () => store.chats.find((c) => c.id === store.activeChatId) || null,
     [store.chats, store.activeChatId]
   );
+
+  useEffect(() => {
+    setSummaryTextOpen(false);
+    setSummaryModelChoice('');
+  }, [store.activeChatId]);
 
   useEffect(() => {
     const key = store.activeChatId ? `draft:${store.activeChatId}` : 'draft:new';
@@ -522,24 +529,56 @@ export const ChatArea: React.FC = () => {
 
           <div className="space-y-2 border-t border-border-light dark:border-border-dark pt-3">
             {activeChat.summaryContent ? (
-              <div className="flex items-center justify-between gap-2">
-                <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">{t.summaryActive}</span>
-                <button
-                  onClick={() => store.clearChatSummary(activeChat.id)}
-                  className="px-2.5 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-red-500 rounded-md cursor-pointer transition-colors"
-                >
-                  {t.clearSummary}
-                </button>
+              <div className="space-y-1.5">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-[11px] text-emerald-600 dark:text-emerald-400 font-semibold">{t.summaryActive}</span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setSummaryTextOpen((v) => !v)}
+                      className="px-2.5 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-blue-500 rounded-md cursor-pointer transition-colors"
+                    >
+                      {summaryTextOpen ? t.hideSummary : t.viewSummary}
+                    </button>
+                    <button
+                      onClick={() => store.clearChatSummary(activeChat.id)}
+                      className="px-2.5 py-1 text-[10px] font-bold text-gray-500 dark:text-gray-400 hover:text-red-500 rounded-md cursor-pointer transition-colors"
+                    >
+                      {t.clearSummary}
+                    </button>
+                  </div>
+                </div>
+                {summaryTextOpen && (
+                  <div className="max-h-48 overflow-y-auto whitespace-pre-wrap px-2.5 py-2 text-[11px] leading-relaxed text-gray-600 dark:text-gray-300 bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg">
+                    {activeChat.summaryContent}
+                  </div>
+                )}
               </div>
             ) : (
-              <button
-                onClick={() => store.summarizeChat(activeChat.id)}
-                disabled={store.summarizingChatId === activeChat.id}
-                className="w-full flex items-center justify-center space-x-1.5 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 disabled:opacity-50 text-blue-600 dark:text-sky-400 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
-              >
-                <Sparkles className="w-3.5 h-3.5" />
-                <span>{store.summarizingChatId === activeChat.id ? t.summarizing : t.summarizeNow}</span>
-              </button>
+              <div className="space-y-1.5">
+                <label className="block text-[10px] font-bold text-gray-500 dark:text-gray-400">{t.summaryModel}</label>
+                <select
+                  value={summaryModelChoice || `${activeChat.providerId || store.activeProviderId}::${activeChat.modelId || store.activeModelId}`}
+                  onChange={(e) => setSummaryModelChoice(e.target.value)}
+                  className="w-full px-2.5 py-1.5 text-[11px] bg-bg-light dark:bg-bg-dark border border-border-light dark:border-border-dark rounded-lg focus:outline-none focus:border-blue-500 dark:text-gray-100"
+                >
+                  {allModels.map((m) => (
+                    <option key={`${m.providerId}::${m.id}`} value={`${m.providerId}::${m.id}`}>
+                      {m.group} / {m.name}
+                    </option>
+                  ))}
+                </select>
+                <button
+                  onClick={() => {
+                    const [providerId, modelId] = (summaryModelChoice || `${activeChat.providerId || store.activeProviderId}::${activeChat.modelId || store.activeModelId}`).split('::');
+                    store.summarizeChat(activeChat.id, undefined, providerId, modelId);
+                  }}
+                  disabled={store.summarizingChatId === activeChat.id}
+                  className="w-full flex items-center justify-center space-x-1.5 px-3 py-2 bg-blue-500/10 hover:bg-blue-500/20 disabled:opacity-50 text-blue-600 dark:text-sky-400 rounded-lg text-[11px] font-bold cursor-pointer transition-colors"
+                >
+                  <Sparkles className="w-3.5 h-3.5" />
+                  <span>{store.summarizingChatId === activeChat.id ? t.summarizing : t.summarizeNow}</span>
+                </button>
+              </div>
             )}
           </div>
         </>

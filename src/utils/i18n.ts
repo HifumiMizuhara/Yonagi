@@ -138,6 +138,9 @@ export const translations = {
     summarizing: '要約中...',
     summaryActive: '要約が適用されています',
     clearSummary: '要約を破棄',
+    summaryModel: '要約に使うモデル',
+    viewSummary: '要約を見る',
+    hideSummary: '要約を隠す',
 
     // Search
     search: '検索',
@@ -377,6 +380,9 @@ export const translations = {
     summarizing: 'Summarizing...',
     summaryActive: 'A summary is in effect',
     clearSummary: 'Discard summary',
+    summaryModel: 'Model for summarization',
+    viewSummary: 'View summary',
+    hideSummary: 'Hide summary',
 
     // Search
     search: 'Search',
@@ -616,6 +622,9 @@ export const translations = {
     summarizing: '正在摘要...',
     summaryActive: '已应用摘要',
     clearSummary: '丢弃摘要',
+    summaryModel: '用于摘要的模型',
+    viewSummary: '查看摘要',
+    hideSummary: '隐藏摘要',
 
     // Search
     search: '搜索',
